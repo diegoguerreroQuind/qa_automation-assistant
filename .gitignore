@@ -1,0 +1,40 @@
+### Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/   
+env/
+
+# Tools / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+### Node / Cypress
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cypress artifacts
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+
+### Environment / secrets
+.env
+.env.*
+
+### Cursor / editor metadata
+.cursor/

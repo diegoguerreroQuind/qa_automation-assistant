@@ -1,0 +1,13 @@
+{
+    "name": "cypress-api-tests",
+    "version": "1.0.0",
+    "description": "Pruebas E2E generadas autom\u00e1ticamente desde Postman",
+    "scripts": {
+        "test": "cypress open",
+        "test:headless": "cypress run"
+    },
+    "devDependencies": {
+        "cypress": "^13.0.0",
+        "typescript": "^5.0.0"
+    }
+}

@@ -1,0 +1,56 @@
+
+Fase 1: Pulir data------------------------------------------------
+python3 -m venv venv (crear entorno)
+source venv/bin/activate (activar entorno)
+deactivate
+
+pip install typer
+
+-----------iniciar proceso-----
+
+1. limpiar json postman 
+python main.py extract -c marketing.json -o api.json
+
+2. generar proyecto cypress
+python main.py scaffold -d ./mi-proyecto-qa
+
+
+
+Fase 2: IA------------------------------------------------
+pip install langchain-google-genai langchain-core python-dotenv
+pip install google-generativeai
+
+1. listar modelos disponibles:
+python listar_modelos.py
+
+
+2. Ejecutar generación de pruebas:
+python main.py generate -j api.json -d ./mi-proyecto-qa
+
+3. arreglar variables de entorno:
+python main.py generate -j api_limpia.json -e entorno.json -d ./mi-proyecto-qa
+
+Fase 3: Testear features-----------------------------------
+
+cd mi-proyecto-qa
+npm install
+npm run test:headless
+npx cypress open --browser chrome
+
+
+--------------Resumen funcional-------------------------
+
+source venv/bin/activate
+
+python main.py extract -c marketing.json -o api.json
+
+python main.py scaffold -d ./mi-proyecto-qa
+
+python main.py generate -j api.json -d ./mi-proyecto-qa
+
+python main.py generate -j api.json -e entorno.json -d ./mi-proyecto-qa
+
+cd mi-proyecto-qa
+npm install
+npm run test:headless
+
