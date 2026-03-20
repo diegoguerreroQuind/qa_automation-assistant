@@ -12,6 +12,10 @@ from app.parsers.environment import extraer_variables_entorno  # <-- NUEVO IMPOR
 
 app = typer.Typer(help="CLI para generar proyectos desde Postman.", no_args_is_help=True)
 
+
+
+# -- Fase 1: Extraer datos de Postman y limpiarlos--
+
 @app.command()
 def extract(
     collection: Path = typer.Option(..., "--collection", "-c", help="Ruta al JSON de Postman"),
@@ -35,6 +39,12 @@ def extract(
     except Exception as e:
         typer.secho(f"❌ Error: {e}", fg=typer.colors.RED)
 
+
+
+
+
+# -- Fase 2: Crear proyecto Cypress--
+
 @app.command()
 def scaffold(
     dest: Path = typer.Option(..., "--dest", "-d", help="Ruta donde se creará el proyecto Cypress")
@@ -45,6 +55,13 @@ def scaffold(
         typer.secho("✅ Proyecto creado exitosamente.", fg=typer.colors.GREEN)
     except Exception as e:
         typer.secho(f"❌ Error al crear el proyecto: {e}", fg=typer.colors.RED)
+
+
+
+
+        
+
+# -- Fase 3: Generar pruebas IA--
 
 @app.command()
 def generate(

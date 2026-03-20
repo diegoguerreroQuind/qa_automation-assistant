@@ -37,7 +37,6 @@ npm install
 npm run test:headless
 npx cypress open --browser chrome
 
-
 --------------Resumen funcional-------------------------
 
 source venv/bin/activate
@@ -53,4 +52,9 @@ python main.py generate -j api.json -e entorno.json -d ./mi-proyecto-qa
 cd mi-proyecto-qa
 npm install
 npm run test:headless
+
+
+data manager con anegnetes en pipelines
+
+copilot o antigravity copilot es clave 
 
