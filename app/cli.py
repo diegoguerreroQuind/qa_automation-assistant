@@ -13,7 +13,6 @@ from app.parsers.environment import extraer_variables_entorno  # <-- NUEVO IMPOR
 app = typer.Typer(help="CLI para generar proyectos desde Postman.", no_args_is_help=True)
 
 
-
 # -- Fase 1: Extraer datos de Postman y limpiarlos--
 
 @app.command()
@@ -40,9 +39,6 @@ def extract(
         typer.secho(f"❌ Error: {e}", fg=typer.colors.RED)
 
 
-
-
-
 # -- Fase 2: Crear proyecto Cypress--
 
 @app.command()
@@ -57,10 +53,6 @@ def scaffold(
         typer.secho(f"❌ Error al crear el proyecto: {e}", fg=typer.colors.RED)
 
 
-
-
-        
-
 # -- Fase 3: Generar pruebas IA--
 
 @app.command()
@@ -74,13 +66,12 @@ def generate(
     """
     typer.secho(f"🧠 Conectando con Gemini para generar código en {dest}...", fg=typer.colors.YELLOW)
     
-    # --- NUEVA LÓGICA: Procesar variables de entorno ---
+    # --- LÓGICA EXISTENTE: Procesar variables de entorno ---
     if env_file:
         if env_file.exists():
             typer.echo(f"🌍 Procesando variables de entorno desde: {env_file.name}")
             try:
                 variables = extraer_variables_entorno(env_file)
-                # Guardamos las variables justo donde Cypress las buscará (raíz del proyecto Cypress)
                 with open(dest / "cypress.env.json", "w", encoding="utf-8") as f:
                     json.dump(variables, f, indent=4)
                 typer.secho(f"   ✅ Archivo cypress.env.json creado con {len(variables)} variables.", fg=typer.colors.GREEN)
@@ -97,24 +88,36 @@ def generate(
         typer.secho(f"❌ Error leyendo {clean_json}: {e}", fg=typer.colors.RED)
         raise typer.Exit(1)
         
+    # --- NUEVA LÓGICA CUCUMBER: Rutas actualizadas ---
     e2e_folder = dest / "cypress" / "e2e"
+    features_folder = e2e_folder / "features"
+    steps_folder = e2e_folder / "step_definitions"
     
-    # Validamos que la estructura que creamos antes realmente exista
-    if not e2e_folder.exists():
-        typer.secho(f"❌ La carpeta {e2e_folder} no existe. Ejecuta 'scaffold' primero.", fg=typer.colors.RED)
+    # Validamos que la nueva estructura exista
+    if not features_folder.exists() or not steps_folder.exists():
+        typer.secho(f"❌ La estructura de carpetas no es válida para Cucumber. Ejecuta 'scaffold' de nuevo.", fg=typer.colors.RED)
         raise typer.Exit(1)
         
     for endpoint in endpoints_limpios:
         nombre_seguro = endpoint['nombre_peticion'].replace(" ", "_").replace("/", "_").lower()
-        archivo_salida = e2e_folder / f"{nombre_seguro}.cy.ts"
+        archivo_feature = features_folder / f"{nombre_seguro}.feature"
+        archivo_steps = steps_folder / f"{nombre_seguro}.ts"
         
-        typer.echo(f"   Generando prueba para: {endpoint['nombre_peticion']}...")
+        typer.echo(f"   Generando prueba BDD para: {endpoint['nombre_peticion']}...")
         
         try:
+            # Ahora la función nos devuelve un diccionario con ambas partes
             codigo_generado = generar_test_cypress(endpoint)
-            with open(archivo_salida, 'w', encoding='utf-8') as f:
-                f.write(codigo_generado)
-            typer.secho(f"   ✅ Archivo creado: {archivo_salida.name}", fg=typer.colors.GREEN)
+            
+            # Guardamos el archivo .feature
+            with open(archivo_feature, 'w', encoding='utf-8') as f:
+                f.write(codigo_generado["feature"])
+                
+            # Guardamos el archivo .ts (Step definitions)
+            with open(archivo_steps, 'w', encoding='utf-8') as f:
+                f.write(codigo_generado["steps"])
+                
+            typer.secho(f"   ✅ Feature y Steps creados para: {nombre_seguro}", fg=typer.colors.GREEN)
         except Exception as e:
             typer.secho(f"   ❌ Error con la IA en {endpoint['nombre_peticion']}: {e}", fg=typer.colors.RED)
 

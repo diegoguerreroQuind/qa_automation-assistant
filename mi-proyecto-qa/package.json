@@ -1,13 +1,21 @@
 {
-    "name": "cypress-api-tests",
+    "name": "cypress-api-tests-cucumber",
     "version": "1.0.0",
-    "description": "Pruebas E2E generadas autom\u00e1ticamente desde Postman",
+    "description": "Pruebas BDD generadas autom\u00e1ticamente desde Postman",
     "scripts": {
         "test": "cypress open",
         "test:headless": "cypress run"
     },
     "devDependencies": {
         "cypress": "^13.0.0",
-        "typescript": "^5.0.0"
+        "typescript": "^5.0.0",
+        "@badeball/cypress-cucumber-preprocessor": "^20.0.0",
+        "@bahmutov/cypress-esbuild-preprocessor": "^2.2.0",
+        "esbuild": "^0.20.0"
+    },
+    "cypress-cucumber-preprocessor": {
+        "stepDefinitions": [
+            "cypress/e2e/step_definitions/**/*.{js,ts}"
+        ]
     }
 }

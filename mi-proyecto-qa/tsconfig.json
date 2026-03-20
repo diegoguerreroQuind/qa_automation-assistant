@@ -7,9 +7,11 @@
         ],
         "types": [
             "cypress",
-            "node"
+            "node",
+            "@badeball/cypress-cucumber-preprocessor"
         ],
-        "baseUrl": "."
+        "baseUrl": ".",
+        "resolveJsonModule": true
     },
     "include": [
         "**/*.ts"

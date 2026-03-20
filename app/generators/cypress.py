@@ -3,44 +3,68 @@ from pathlib import Path
 
 def crear_estructura_cypress(destino: Path):
     """
-    Crea la estructura de carpetas y archivos base para un proyecto de Cypress estable.
+    Crea la estructura de carpetas y archivos base para un proyecto de Cypress con Cucumber BDD.
     """
-    # Definimos las carpetas principales
+    # 1. Definimos las carpetas con tu nueva arquitectura escalable
     carpetas = [
-        destino / "cypress" / "e2e",
+        destino / "cypress" / "e2e" / "features",
+        destino / "cypress" / "e2e" / "step_definitions",
         destino / "cypress" / "fixtures",
+        destino / "cypress" / "services",
         destino / "cypress" / "support",
     ]
 
-    # Creamos las carpetas (parents=True crea las carpetas intermedias si no existen)
     for carpeta in carpetas:
         carpeta.mkdir(parents=True, exist_ok=True)
 
-    # Creamos el package.json
+    # 2. Creamos el package.json (Apuntando a los nuevos step_definitions)
     package_json = {
-        "name": "cypress-api-tests",
+        "name": "cypress-api-tests-cucumber",
         "version": "1.0.0",
-        "description": "Pruebas E2E generadas automáticamente desde Postman",
+        "description": "Pruebas BDD generadas automáticamente desde Postman",
         "scripts": {
             "test": "cypress open",
             "test:headless": "cypress run"
         },
         "devDependencies": {
             "cypress": "^13.0.0",
-            "typescript": "^5.0.0"
+            "typescript": "^5.0.0",
+            "@badeball/cypress-cucumber-preprocessor": "^20.0.0",
+            "@bahmutov/cypress-esbuild-preprocessor": "^2.2.0",
+            "esbuild": "^0.20.0"
+        },
+        "cypress-cucumber-preprocessor": {
+            "stepDefinitions": [
+                "cypress/e2e/step_definitions/**/*.{js,ts}"
+            ]
         }
     }
     
     with open(destino / "package.json", "w", encoding="utf-8") as f:
         json.dump(package_json, f, indent=4)
 
-    # Creamos el cypress.config.js (Estable para API Testing)
+    # 3. Creamos el cypress.config.js (Apuntando a la carpeta de features)
     cypress_config = """const { defineConfig } = require("cypress");
+const createBundler = require("@bahmutov/cypress-esbuild-preprocessor");
+const { addCucumberPreprocessorPlugin } = require("@badeball/cypress-cucumber-preprocessor");
+const { createEsbuildPlugin } = require("@badeball/cypress-cucumber-preprocessor/esbuild");
 
 module.exports = defineConfig({
   e2e: {
-    setupNodeEvents(on, config) {
-      // implement node event listeners here
+    specPattern: "cypress/e2e/features/**/*.feature", // Enrutado a tu carpeta específica
+    async setupNodeEvents(on, config) {
+      // Configuramos el plugin de Cucumber
+      await addCucumberPreprocessorPlugin(on, config);
+      
+      // Configuramos esbuild para compilar los steps
+      on(
+        "file:preprocessor",
+        createBundler({
+          plugins: [createEsbuildPlugin(config)],
+        })
+      );
+
+      return config;
     },
     supportFile: false, // Apagado porque son pruebas de API
   },
@@ -49,19 +73,20 @@ module.exports = defineConfig({
     with open(destino / "cypress.config.js", "w", encoding="utf-8") as f:
         f.write(cypress_config)
 
-    # Creamos el tsconfig.json perfecto para Cypress
+    # 4. Creamos el tsconfig.json perfecto para Cypress + Cucumber
     tsconfig = {
         "compilerOptions": {
             "target": "es5",
             "lib": ["es5", "dom"],
-            "types": ["cypress", "node"],
-            "baseUrl": "."
+            "types": ["cypress", "node", "@badeball/cypress-cucumber-preprocessor"],
+            "baseUrl": ".",
+            "resolveJsonModule": True
         },
         "include": ["**/*.ts"]
     }
     with open(destino / "tsconfig.json", "w", encoding="utf-8") as f:
         json.dump(tsconfig, f, indent=4)
         
-    # Creamos un archivo de soporte vacío por si a futuro decides prender supportFile
+    # 5. Creamos un archivo de soporte vacío
     with open(destino / "cypress" / "support" / "e2e.ts", "w", encoding="utf-8") as f:
         f.write("// Archivo de soporte de Cypress para configuraciones globales\n")

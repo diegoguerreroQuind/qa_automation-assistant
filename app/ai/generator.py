@@ -2,38 +2,50 @@ import os
 import ssl
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.output_parsers import StrOutputParser  # <-- NUEVO IMPORT
-from app.ai.prompts import CYPRESS_GENERATOR_PROMPT
+from langchain_core.output_parsers import StrOutputParser
+from app.ai.prompts import CYPRESS_CUCUMBER_PROMPT
 
-# --- PARCHE PARA REDES CORPORATIVAS CON PROXY/VPN ---
+# --- PARCHE PARA REDES CORPORATIVAS ---
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
     pass
 else:
     ssl._create_default_https_context = _create_unverified_https_context
-# ----------------------------------------------------
+# --------------------------------------
 
 load_dotenv()
 
-def generar_test_cypress(endpoint_data: dict) -> str:
+def generar_test_cypress(endpoint_data: dict) -> dict:
     """
-    Toma un diccionario con los datos limpios de un endpoint y usa Gemini
-    vía LangChain para generar el código de prueba en Cypress.
+    Usa Gemini para generar código BDD y devuelve un diccionario con:
+    {'feature': 'código gherkin', 'steps': 'código typescript'}
     """
-    # Usamos el modelo que elegiste (le quité el prefijo "models/" que a veces da problemas)
     llm = ChatGoogleGenerativeAI(
         model="gemini-pro-latest", 
         temperature=0.1
     )
     
-    # Añadimos el StrOutputParser al final de la cadena de LangChain
-    chain = CYPRESS_GENERATOR_PROMPT | llm | StrOutputParser()
+    chain = CYPRESS_CUCUMBER_PROMPT | llm | StrOutputParser()
     
-    # Al usar StrOutputParser, "respuesta" ya es 100% un string garantizado
-    respuesta = chain.invoke({"endpoint_data": str(endpoint_data)})
+    # Invocamos a la IA pasándole los datos y el nombre del endpoint
+    respuesta_cruda = chain.invoke({
+        "endpoint_data": str(endpoint_data),
+        "nombre_endpoint": endpoint_data.get("nombre_peticion", "endpoint_desconocido")
+    })
     
-    # Ahora el replace funcionará perfecto
-    codigo_limpio = respuesta.replace("```typescript", "").replace("```ts", "").replace("```", "").strip()
+    # Limpiamos basura de markdown por si la IA desobedece
+    respuesta_cruda = respuesta_cruda.replace("```gherkin", "").replace("```typescript", "").replace("```ts", "").replace("```", "").strip()
     
-    return codigo_limpio
+    # Separamos la respuesta usando los delimitadores que le dimos en el prompt
+    try:
+        partes = respuesta_cruda.split("===STEPS===")
+        feature_part = partes[0].replace("===FEATURE===", "").strip()
+        steps_part = partes[1].strip()
+        
+        return {
+            "feature": feature_part,
+            "steps": steps_part
+        }
+    except IndexError:
+        raise ValueError("La IA no devolvió el formato esperado con los delimitadores.")

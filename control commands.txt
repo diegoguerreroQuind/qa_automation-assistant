@@ -45,6 +45,9 @@ python main.py extract -c marketing.json -o api.json
 
 python main.py scaffold -d ./mi-proyecto-qa
 
+cd mi-proyecto-qa
+npm install
+
 python main.py generate -j api.json -d ./mi-proyecto-qa
 
 python main.py generate -j api.json -e entorno.json -d ./mi-proyecto-qa

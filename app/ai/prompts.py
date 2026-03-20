@@ -1,22 +1,43 @@
 from langchain_core.prompts import PromptTemplate
 
-CYPRESS_GENERATOR_PROMPT = PromptTemplate.from_template(
-    """Actúa como un Senior QA Automation Engineer experto en Cypress y TypeScript.
-Tu tarea es generar el código de prueba E2E para el siguiente endpoint de una API.
+CYPRESS_CUCUMBER_PROMPT = PromptTemplate.from_template(
+    """Actúa como un Senior QA Automation Engineer experto en Cypress, TypeScript y Cucumber BDD.
+Tu tarea es generar las pruebas automatizadas para el siguiente endpoint de una API.
 
-AQUÍ ESTÁN LOS DATOS DEL ENDPOINT (Extraídos de Postman):
+DATOS DEL ENDPOINT (Postman):
 {endpoint_data}
 
 REGLAS ESTRICTAS:
-1. Usa 'cy.request()' para hacer la llamada a la API.
-2. Escribe el código en TypeScript.
-3. Incluye aserciones (expect) para validar el Status Code (ej. 200, 201).
-4. Si hay un body en la petición, inclúyelo en el cy.request.
-5. MANEJO DE VARIABLES: Si la URL contiene variables de Postman (ejemplo: {{{{url-host-marketing-notification}}}}), conviértelas a variables de entorno de Cypress dentro de un template string en TypeScript. 
-   - Ejemplo de entrada: "{{{{url-api}}}}/users"
-   - Ejemplo de salida: `${{Cypress.env('url-api')}}/users`
-6. DEVUELVE ÚNICAMENTE CÓDIGO. No agregues saludos, ni bloques de markdown (como ```typescript). Solo el código crudo listo para ser guardado.
+1. Debes generar DOS bloques de código: el archivo Gherkin y el archivo de Step Definitions.
+2. IMPORTANTE: En el archivo TypeScript, importa los steps usando EXACTAMENTE esto:
+   `import {{ Given, When, Then }} from "@badeball/cypress-cucumber-preprocessor";`
+3. Usa `cy.request()` en el paso 'When'.
+4. MANEJO DE VARIABLES: Si la URL contiene variables de Postman (ej. {{{{url-host}}}}), conviértelas a `${{Cypress.env('url-host')}}` en el TypeScript.
+5. NO AGREGUES FORMATO MARKDOWN.
+6. UNICIDAD: Debes incluir el nombre de la petición '{nombre_endpoint}' dentro de las frases de los steps (Given, When, Then) para evitar choques con otras pruebas.
 
-CÓDIGO CYPRESS:
+USA EXACTAMENTE ESTE FORMATO DE RESPUESTA:
+
+===FEATURE===
+Feature: Probar {nombre_endpoint}
+  Scenario: Ejecutar exitosamente {nombre_endpoint}
+    Given que tengo los datos para '{nombre_endpoint}'
+    When envío la petición hacia '{nombre_endpoint}'
+    Then el código de respuesta para '{nombre_endpoint}' debe ser exitoso
+
+===STEPS===
+import {{ Given, When, Then }} from "@badeball/cypress-cucumber-preprocessor";
+
+Given("que tengo los datos para '{nombre_endpoint}'", () => {{
+    // setup si es necesario
+}});
+
+When("envío la petición hacia '{nombre_endpoint}'", () => {{
+    // cy.request(...)
+}});
+
+Then("el código de respuesta para '{nombre_endpoint}' debe ser exitoso", () => {{
+    // validaciones
+}});
 """
 )
