@@ -1,3 +1,4 @@
+# app/ai/prompts/cypress.py
 from langchain_core.prompts import PromptTemplate
 
 CYPRESS_CUCUMBER_PROMPT = PromptTemplate.from_template(

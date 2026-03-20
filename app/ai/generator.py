@@ -1,9 +1,11 @@
 import os
 import ssl
+import json # <-- IMPORT FALTANTE AGREGADO
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
-from app.ai.prompts import CYPRESS_CUCUMBER_PROMPT
+from app.ai.prompts.cypress_prompt import CYPRESS_CUCUMBER_PROMPT
+from app.ai.prompts.jira_prompt import JIRA_PARSER_PROMPT
 
 # --- PARCHE PARA REDES CORPORATIVAS ---
 try:
@@ -49,3 +51,29 @@ def generar_test_cypress(endpoint_data: dict) -> dict:
         }
     except IndexError:
         raise ValueError("La IA no devolvió el formato esperado con los delimitadores.")
+
+
+def estructurar_descripcion_jira(descripcion_cruda: str, api_json_context: str) -> dict:
+    """
+    Usa Gemini para cruzar el texto crudo de Jira con los endpoints de la API, 
+    devolviendo un diccionario estructurado.
+    """
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-pro-latest", 
+        temperature=0.0 # Temperatura 0 para precisión absoluta
+    )
+    
+    chain = JIRA_PARSER_PROMPT | llm | StrOutputParser()
+    
+    # Pasamos ambos contextos a la IA
+    respuesta_cruda = chain.invoke({
+        "descripcion_jira": descripcion_cruda,
+        "api_json_context": api_json_context
+    })
+    
+    respuesta_limpia = respuesta_cruda.replace("```json", "").replace("```", "").strip()
+    
+    try:
+        return json.loads(respuesta_limpia)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Gemini no devolvió un JSON válido. Respuesta: {respuesta_limpia}\nError: {e}")

@@ -48,6 +48,9 @@ python main.py scaffold -d ./mi-proyecto-qa
 cd mi-proyecto-qa
 npm install
 
+--------obetner información de jira-------
+python main.py fetch-jira
+
 python main.py generate -j api.json -d ./mi-proyecto-qa
 
 python main.py generate -j api.json -e entorno.json -d ./mi-proyecto-qa
@@ -57,7 +60,5 @@ npm install
 npm run test:headless
 
 
-data manager con anegnetes en pipelines
 
-copilot o antigravity copilot es clave 
 

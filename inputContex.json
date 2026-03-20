@@ -1,0 +1,42 @@
+{
+    "key": "EF-11",
+    "resumen": "HU Demo v.1",
+    "contexto_negocio": "Validación de la API de notificaciones de marketing para asegurar el correcto manejo de respuestas y códigos de estado HTTP en los canales de Email, Push y WhatsApp ante escenarios de datos faltantes o inválidos.",
+    "endpoints": [
+        {
+            "nombre_endpoint": "enviar notificacion Email",
+            "criterios_aceptacion": [
+                {
+                    "id": 1,
+                    "descripcion_caso": "El enpoint de notificación por correo electrónico debe retornar un código 200 OK cuando no se le ingresa ningún dato en el campo {\"emails\"}.",
+                    "codigo_http_esperado": 200
+                },
+                {
+                    "id": 2,
+                    "descripcion_caso": "El endpont de correo electrónico debe retornar un 500 Internal Server Error cuando el campo {\"channel\" electrónico contenga un dato diferente a \"EMAIL\". }",
+                    "codigo_http_esperado": 500
+                }
+            ]
+        },
+        {
+            "nombre_endpoint": "enviar notificacion Push",
+            "criterios_aceptacion": [
+                {
+                    "id": 3,
+                    "descripcion_caso": "El endpoint de notificación push debe retornar 400 Bad request cuandop el campo {subAccountId} este vacío.",
+                    "codigo_http_esperado": 400
+                }
+            ]
+        },
+        {
+            "nombre_endpoint": "enviar notificacion Whatsapp",
+            "criterios_aceptacion": [
+                {
+                    "id": 4,
+                    "descripcion_caso": "En la notificación vía whattsapp si el campo {subAccountId} esta vacío debe retornar un 400 bad request.",
+                    "codigo_http_esperado": 400
+                }
+            ]
+        }
+    ]
+}

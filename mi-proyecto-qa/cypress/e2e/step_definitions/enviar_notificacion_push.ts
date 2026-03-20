@@ -23,23 +23,20 @@ Given("que tengo los datos para 'enviar notificacion Push'", () => {
             }
         ]
     };
-    const requestHeaders = {};
-
     cy.wrap(requestBody).as('requestBody');
-    cy.wrap(requestHeaders).as('requestHeaders');
 });
 
 When("envío la petición hacia 'enviar notificacion Push'", () => {
-    cy.get('@requestBody').then((body) => {
-        cy.get('@requestHeaders').then((headers) => {
-            cy.request({
-                method: 'POST',
-                url: `${Cypress.env('url-host-marketing-notification')}/marketing-notifications/api/v1/notifications`,
-                headers: headers,
-                body: body,
-                failOnStatusCode: false
-            }).as('apiResponse');
-        });
+    cy.get('@requestBody').then((requestBody) => {
+        cy.request({
+            method: 'POST',
+            url: `${Cypress.env('url-host-marketing-notification')}/marketing-notifications/api/v1/notifications`,
+            body: requestBody,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            failOnStatusCode: false
+        }).as('apiResponse');
     });
 });
 

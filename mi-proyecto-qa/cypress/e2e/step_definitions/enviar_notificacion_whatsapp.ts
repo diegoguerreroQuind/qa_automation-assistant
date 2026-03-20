@@ -32,6 +32,8 @@ When("envío la petición hacia 'enviar notificacion Whatsapp'", () => {
 
 Then("el código de respuesta para 'enviar notificacion Whatsapp' debe ser exitoso", () => {
     cy.get('@apiResponse').then((response: any) => {
-        expect(response.status).to.be.oneOf([200, 201, 202, 204]);
+        expect(response.status).to.be.oneOf([200, 201, 202]);
     });
 });
+
+
