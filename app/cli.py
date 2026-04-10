@@ -4,7 +4,7 @@ import typer
 # Importamos los intermediarios desde nuestra nueva carpeta commands
 from app.commands.postman import extract_command
 from app.commands.cypress import scaffold_command
-from app.commands.generate import generate_command # <-- AHORA IMPORTAMOS DESDE generate
+from app.commands.generate import generate_command
 from app.commands.jira import fetch_jira_command
 
 # Inicializamos la app Typer

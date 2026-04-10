@@ -1,6 +1,6 @@
 import os
 import ssl
-import json # <-- IMPORT FALTANTE AGREGADO
+import json 
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
@@ -18,11 +18,15 @@ else:
 
 load_dotenv()
 
-def generar_test_cypress(endpoint_data: dict) -> dict:
+# --- ACTUALIZADO: Ahora recibe casos_jira (por defecto vacío para no romper usos anteriores) ---
+def generar_test_cypress(endpoint_data: dict, casos_jira: list = None) -> dict:
     """
     Usa Gemini para generar código BDD y devuelve un diccionario con:
     {'feature': 'código gherkin', 'steps': 'código typescript'}
     """
+    if casos_jira is None:
+        casos_jira = []
+
     llm = ChatGoogleGenerativeAI(
         model="gemini-pro-latest", 
         temperature=0.1
@@ -30,10 +34,11 @@ def generar_test_cypress(endpoint_data: dict) -> dict:
     
     chain = CYPRESS_CUCUMBER_PROMPT | llm | StrOutputParser()
     
-    # Invocamos a la IA pasándole los datos y el nombre del endpoint
+    # --- ACTUALIZADO: Le pasamos los casos de Jira a la IA ---
     respuesta_cruda = chain.invoke({
         "endpoint_data": str(endpoint_data),
-        "nombre_endpoint": endpoint_data.get("nombre_peticion", "endpoint_desconocido")
+        "nombre_endpoint": endpoint_data.get("nombre_peticion", "endpoint_desconocido"),
+        "casos_prueba_jira": str(casos_jira) if casos_jira else "Generar solo un Happy Path exitoso." 
     })
     
     # Limpiamos basura de markdown por si la IA desobedece

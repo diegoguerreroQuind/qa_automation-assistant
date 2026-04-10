@@ -1,20 +1,25 @@
 {
     "key": "EF-11",
     "resumen": "HU Demo v.1",
-    "contexto_negocio": "Validación de la API de notificaciones de marketing para asegurar el correcto manejo de respuestas y códigos de estado HTTP en los canales de Email, Push y WhatsApp ante escenarios de datos faltantes o inválidos.",
+    "contexto_negocio": "Servicio de envío de notificaciones a través de múltiples canales (Email, Push, WhatsApp), incluyendo validaciones de campos obligatorios como subAccountId y channel.",
     "endpoints": [
         {
             "nombre_endpoint": "enviar notificacion Email",
             "criterios_aceptacion": [
                 {
                     "id": 1,
-                    "descripcion_caso": "El enpoint de notificación por correo electrónico debe retornar un código 200 OK cuando no se le ingresa ningún dato en el campo {\"emails\"}.",
+                    "descripcion_caso": "Notificación por email sin campo emails o enviado vacío",
                     "codigo_http_esperado": 200
                 },
                 {
                     "id": 2,
-                    "descripcion_caso": "El endpont de correo electrónico debe retornar un 500 Internal Server Error cuando el campo {\"channel\" electrónico contenga un dato diferente a \"EMAIL\". }",
+                    "descripcion_caso": "Notificación por email con channel inválido (diferente de EMAIL y SMS)",
                     "codigo_http_esperado": 500
+                },
+                {
+                    "id": 3,
+                    "descripcion_caso": "Happy path notificación por email con petición válida",
+                    "codigo_http_esperado": 200
                 }
             ]
         },
@@ -22,8 +27,13 @@
             "nombre_endpoint": "enviar notificacion Push",
             "criterios_aceptacion": [
                 {
-                    "id": 3,
-                    "descripcion_caso": "El endpoint de notificación push debe retornar 400 Bad request cuandop el campo {subAccountId} este vacío.",
+                    "id": 1,
+                    "descripcion_caso": "Notificación push sin subAccountId (vacío o no enviado)",
+                    "codigo_http_esperado": 400
+                },
+                {
+                    "id": 2,
+                    "descripcion_caso": "Notificación push con subAccountId no numérico (caracteres alfabéticos)",
                     "codigo_http_esperado": 400
                 }
             ]
@@ -32,9 +42,14 @@
             "nombre_endpoint": "enviar notificacion Whatsapp",
             "criterios_aceptacion": [
                 {
-                    "id": 4,
-                    "descripcion_caso": "En la notificación vía whattsapp si el campo {subAccountId} esta vacío debe retornar un 400 bad request.",
+                    "id": 1,
+                    "descripcion_caso": "Notificación WhatsApp sin subAccountId (vacío o no enviado)",
                     "codigo_http_esperado": 400
+                },
+                {
+                    "id": 2,
+                    "descripcion_caso": "Happy path notificación por WhatsApp con petición válida",
+                    "codigo_http_esperado": 200
                 }
             ]
         }
