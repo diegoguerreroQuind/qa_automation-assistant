@@ -11,10 +11,10 @@ def fetch_jira_command(
     Se conecta a Jira, lee la historia, cruza la info con api.json 
     y estructura los criterios en inputContex.json.
     """
-    server = "https://quind-team-mcu7xlcy.atlassian.net"  
-    email = "daniel.mejia@quind.io"              
+    server = ""  
+    email = ""              
     token = ""                      
-    issue = "EF-11"                       
+    issue = ""                       
 
     if not api_json_path.exists():
         typer.secho(f"❌ No se encontró el archivo de API en: {api_json_path}", fg=typer.colors.RED)

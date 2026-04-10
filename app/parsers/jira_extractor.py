@@ -8,10 +8,10 @@ def extraer_historia_jira(server: str, email: str, token: str, issue_key: str) -
     """
     try:
         # Autenticación básica con Jira
-        jira_client = JIRA(server=server, basic_auth=("daniel.mejia@quind.io", "ATATT3xFfGF0-qWlYstriTp4I9BWP23wkiKu4w5RsBm8uBQpzh9hBk31iPaIhzQjDQshyqe7bG52pmTo-Ep2dTsD_wEwAcqsRKTigAVVGGQ4Zf3C8A3cv1yP3bCQbqyxFbddpgcQv984ftcusUqwm9tuf1KxRS3TPDMH-dpPfPkaaZ5XIV2b9Ps=D63C20DF"))
+        jira_client = JIRA(server=server, basic_auth=(email, token))
         
         # Buscamos el ticket específico (ej. PROY-123)
-        historia = jira_client.issue("EF-11")
+        historia = jira_client.issue(issue_key)
         
         # Extraemos el resumen y la descripción (donde están tus criterios)
         resumen = historia.fields.summary
