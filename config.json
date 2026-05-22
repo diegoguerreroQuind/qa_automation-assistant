@@ -1,0 +1,20 @@
+{
+  "jira": {
+    "server": "https://quind-team-mcu7xlcy.atlassian.net",
+    "email": "diego.guerrero@quind.io",
+    "token": "ATATT3xFfGF0j90r2pnFpj6JP9qtvKVtskvUqazg1JMNIvwtZJ4uBwZoZD4_IxfUMNdgmCw7ZcTSuLU-GMXEl7scHQlsVptNhIUlhu3-bA9ELEPc0AMbAXBluXA3UjRaCFv3LSVzntlT53TUTu43ZYypCZKSAoYVVnTvsS2-mVBGw9CKcl0JERw=74B693B1",
+    "issue": "EF-11"
+  },
+  "rutas": {
+    "api_json": "api.json",
+    "entorno_json": "entorno.json",
+    "input_context": "inputContext.json",
+    "coleccion_postman": "marketing.json",
+    "proyecto_cypress": "./mi-proyecto-qa"
+  },
+  "ia": {
+    "modelo": "gemini-pro-latest",
+    "temperatura_codigo": 0.1,
+    "temperatura_jira": 0.0
+  }
+}

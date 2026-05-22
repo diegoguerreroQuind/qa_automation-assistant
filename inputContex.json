@@ -1,24 +1,24 @@
 {
     "key": "EF-11",
-    "resumen": "HU Demo v.1",
-    "contexto_negocio": "Servicio de envío de notificaciones a través de múltiples canales (Email, Push, WhatsApp), incluyendo validaciones de campos obligatorios como subAccountId y channel.",
+    "resumen": "HU EF-11 Notificaciones API",
+    "contexto_negocio": "Servicio de envío de notificaciones a través de múltiples canales (Email, Push y WhatsApp), que incluye validaciones de estructura y datos obligatorios en las peticiones como el subAccountId, el tipo de canal y los destinatarios.",
     "endpoints": [
         {
             "nombre_endpoint": "enviar notificacion Email",
             "criterios_aceptacion": [
                 {
                     "id": 1,
-                    "descripcion_caso": "Notificación por email sin campo emails o enviado vacío",
+                    "descripcion_caso": "Notificación por email sin campo emails: El servicio debe responder exitosamente cuando el campo emails no es enviado o se envía vacío.",
                     "codigo_http_esperado": 200
                 },
                 {
                     "id": 2,
-                    "descripcion_caso": "Notificación por email con channel inválido (diferente de EMAIL y SMS)",
+                    "descripcion_caso": "Notificación por email con channel inválido: El servicio debe fallar indicando error interno si el canal enviado es diferente de EMAIL o SMS.",
                     "codigo_http_esperado": 500
                 },
                 {
                     "id": 3,
-                    "descripcion_caso": "Happy path notificación por email con petición válida",
+                    "descripcion_caso": "Happy path notificación por email: El servicio debe procesar correctamente una petición válida de notificación por correo electrónico.",
                     "codigo_http_esperado": 200
                 }
             ]
@@ -28,12 +28,12 @@
             "criterios_aceptacion": [
                 {
                     "id": 1,
-                    "descripcion_caso": "Notificación push sin subAccountId (vacío o no enviado)",
+                    "descripcion_caso": "Notificación push sin subAccountId: El servicio debe rechazar la petición si el campo subAccountId está vacío o no es enviado.",
                     "codigo_http_esperado": 400
                 },
                 {
                     "id": 2,
-                    "descripcion_caso": "Notificación push con subAccountId no numérico (caracteres alfabéticos)",
+                    "descripcion_caso": "Notificación push con subAccountId no numérico: El servicio debe rechazar la petición indicando que el subAccountId debe contener solo números si se envían caracteres alfabéticos.",
                     "codigo_http_esperado": 400
                 }
             ]
@@ -43,12 +43,12 @@
             "criterios_aceptacion": [
                 {
                     "id": 1,
-                    "descripcion_caso": "Notificación WhatsApp sin subAccountId (vacío o no enviado)",
+                    "descripcion_caso": "Notificación WhatsApp sin subAccountId: El servicio debe rechazar la petición si el campo subAccountId está vacío o no es enviado.",
                     "codigo_http_esperado": 400
                 },
                 {
                     "id": 2,
-                    "descripcion_caso": "Happy path notificación por WhatsApp con petición válida",
+                    "descripcion_caso": "Happy path notificación por WhatsApp: El servicio debe procesar correctamente una petición válida de notificación por WhatsApp.",
                     "codigo_http_esperado": 200
                 }
             ]

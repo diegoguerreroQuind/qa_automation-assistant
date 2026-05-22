@@ -1,7 +1,10 @@
 import { Given, When, Then } from "@badeball/cypress-cucumber-preprocessor";
 
 Given("que tengo los datos base para la peticion de enviar notificacion Email", () => {
-    const basePayload = {
+    const baseUrl = Cypress.env("url-host-marketing-notification") || "http://localhost";
+    const requestUrl = `${baseUrl}/marketing-notifications/api/v1/notifications`;
+    
+    const requestBody = {
         contextSource: "CONTEXTO",
         subAccountId: "12345",
         shippingMethods: [
@@ -16,48 +19,49 @@ Given("que tengo los datos base para la peticion de enviar notificacion Email", 
             }
         ]
     };
-    cy.wrap(basePayload).as("requestBody");
+
+    cy.wrap(requestUrl).as("requestUrl");
+    cy.wrap(requestBody).as("requestBody");
 });
 
-Given("ajusto la peticion de enviar notificacion Email para el caso sin campo emails o enviado vacio", () => {
-    cy.get("@requestBody").then((payload: any) => {
-        payload.shippingMethods[0].emails = [];
-        cy.wrap(payload).as("requestBody");
+Given("ajusto la peticion de enviar notificacion Email para el caso sin campo emails", () => {
+    cy.get("@requestBody").then((body: any) => {
+        delete body.shippingMethods[0].emails;
+        cy.wrap(body).as("requestBody");
     });
 });
 
-Given("ajusto la peticion de enviar notificacion Email para el caso con channel invalido", () => {
-    cy.get("@requestBody").then((payload: any) => {
-        payload.shippingMethods[0].channel = "INVALIDO";
-        cy.wrap(payload).as("requestBody");
+Given("ajusto la peticion de enviar notificacion Email para el caso channel invalido", () => {
+    cy.get("@requestBody").then((body: any) => {
+        body.shippingMethods[0].channel = "INVALIDO";
+        cy.wrap(body).as("requestBody");
     });
 });
 
 Given("ajusto la peticion de enviar notificacion Email para el caso happy path", () => {
-    cy.log("Mantenemos el payload original para el happy path");
+    cy.log("Los datos base ya están configurados para el happy path");
 });
 
 When("envio la peticion hacia enviar notificacion Email", () => {
-    cy.get("@requestBody").then((payload: any) => {
-        const baseUrl = Cypress.env("url-host-marketing-notification") || "";
-        cy.request({
-            method: "POST",
-            url: `${baseUrl}/marketing-notifications/api/v1/notifications`,
-            headers: {},
-            body: payload,
-            failOnStatusCode: false
-        }).as("apiResponse");
+    cy.get("@requestUrl").then((url: any) => {
+        cy.get("@requestBody").then((body: any) => {
+            cy.request({
+                method: "POST",
+                url: url,
+                body: body,
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                failOnStatusCode: false
+            }).as("response");
+        });
     });
 });
 
 Then("el codigo de respuesta de enviar notificacion Email debe ser 200", () => {
-    cy.get("@apiResponse").then((response: any) => {
-        expect(response.status).to.eq(200);
-    });
+    cy.get("@response").its("status").should("eq", 200);
 });
 
 Then("el codigo de respuesta de enviar notificacion Email debe ser 500", () => {
-    cy.get("@apiResponse").then((response: any) => {
-        expect(response.status).to.eq(500);
-    });
+    cy.get("@response").its("status").should("eq", 500);
 });
