@@ -1,0 +1,5 @@
+# Dependencias solo de desarrollo / tests (no van a la imagen de producción).
+# Instalar con: ./venv/bin/pip install -r requirements-dev.txt
+pytest==8.3.4
+pytest-asyncio==0.25.2
+# httpx y aiosqlite ya están en requirements.txt (se reutilizan para los tests).

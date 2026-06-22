@@ -57,13 +57,20 @@ Prioridad por dolor (acceso DB inline + lógica de negocio en router):
    `ChatGoogleGenerativeAI` directamente) — habilita mockear y el "multi-model
    support" que el código ya anuncia pero no implementa.
 
-## Precondición fuerte: tests
+## Precondición: tests — ✅ HECHA (base)
 
-**No hay tests.** Antes de la reorganización masiva (paso 5 en adelante) crear un
-harness mínimo (pytest + httpx AsyncClient + DB de test) que cubra el happy path
-de cada router. La capa de repositorios ya hace esto factible (se mockea el repo).
-Sin tests, cada paso debe verificarse arrancando el backend y ejercitando el flujo
-(como se hizo con `executions`).
+Harness en `backend/tests/` (pytest + pytest-asyncio + httpx ASGITransport + DB
+SQLite en memoria; `get_db` sobreescrito, revocación de token mockeada para no
+depender de Redis). **24 tests** cubren happy path + 401/404 de auth, projects y
+executions (esta última ejercita la capa de repositorios). Correr con:
+
+```bash
+./venv/bin/pip install -r requirements-dev.txt   # primera vez
+./venv/bin/pytest
+```
+
+Ampliar la cobertura **a la par** que se refactoriza cada módulo (escribir los
+tests del dominio antes/junto a moverlo a repositorio).
 
 ## Principio rector
 
