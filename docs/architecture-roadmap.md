@@ -44,9 +44,11 @@ Prioridad por dolor (acceso DB inline + lógica de negocio en router):
 1. ~~**projects** (15 ops inline) → `project_repository`~~ ✅ HECHO.
 2. ~~**files** (13 ops inline) → `file_repository` + endurecer anti-path-traversal
    (`is_relative_to` + rechazo de separadores)~~ ✅ HECHO.
-3. **fetch_jira** → extraer la orquestación (~80 líneas) del router a un
-   `execution_service.fetch_and_link_jira_context()` (use case). ← siguiente
-4. **integrations / user_stories / auth** → repos respectivos.
+3. ~~**fetch_jira** → extraer la orquestación (~80 líneas) del router a un
+   `execution_service.fetch_and_link_jira_context()` (use case)~~ ✅ HECHO.
+   Errores de dominio (JiraCredentialsMissing/NoEndpointsExtracted/
+   JiraContextFetchFailed) que el router traduce a 424/409/502.
+4. **integrations / user_stories / auth** → repos respectivos. ← siguiente
 5. **Fusionar `app/` en `backend/modules/generation/`**: elimina los
    `sys.path.insert` (`tasks/celery_app.py`, `generation_task.py`) y el riesgo
    del Dockerfile. Hacerlo cuando exista paquete instalable (`pyproject.toml`).

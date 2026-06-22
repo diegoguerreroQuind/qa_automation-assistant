@@ -103,3 +103,28 @@ async def test_other_user_cannot_access_execution(client, auth_headers, executio
     other_headers = {"Authorization": f"Bearer {other_token}"}
     resp = await client.get(f"/executions/{execution_id}", headers=other_headers)
     assert resp.status_code == 404
+
+
+# --- fetch-jira: caso de uso extraído a execution_service ---
+async def test_fetch_jira_requires_auth(client, execution_id):
+    resp = await client.post(
+        f"/executions/{execution_id}/fetch-jira", json={"issue_key": "EF-1"}
+    )
+    assert resp.status_code == 401
+
+
+async def test_fetch_jira_unknown_execution_404(client, auth_headers):
+    resp = await client.post(
+        "/executions/no-existe/fetch-jira", headers=auth_headers, json={"issue_key": "EF-1"}
+    )
+    assert resp.status_code == 404
+
+
+async def test_fetch_jira_without_credentials_424(client, auth_headers, execution_id):
+    """Sin credenciales Jira guardadas → JiraCredentialsMissing → 424."""
+    resp = await client.post(
+        f"/executions/{execution_id}/fetch-jira",
+        headers=auth_headers,
+        json={"issue_key": "EF-1"},
+    )
+    assert resp.status_code == 424

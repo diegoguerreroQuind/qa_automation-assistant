@@ -1,6 +1,5 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models.database import get_db
 from backend.models.db import User, Execution
@@ -16,10 +15,8 @@ from backend.schemas.executions import (
 )
 from backend.schemas.projects import ExecutionSummary
 from backend.security.jwt import get_current_user
-from backend.services.credentials_service import get_credential
+from backend.services import execution_service
 from backend.services.execution_service import save_extracted_endpoints
-from backend.services.jira_persistence import upsert_jira_issue
-from backend.services.jira_service import JiraService
 from backend.services.pipeline_service import get_session_dir, extract_and_scaffold
 
 router = APIRouter(prefix="/executions", tags=["executions"])
@@ -153,14 +150,20 @@ async def fetch_jira(
     Fetches a Jira ticket, uses AI to structure its acceptance criteria
     against the extracted endpoints, and saves inputContext.json.
     RF-003: credentials are passed per-request (never stored in plaintext).
+
+    La orquestación vive en execution_service.fetch_and_link_jira_context; aquí
+    solo se valida ownership y se traducen los errores de dominio a HTTP.
     """
-    execution = await _require_execution_ownership(execution_id, current_user.id, db)
+    await _require_execution_ownership(execution_id, current_user.id, db)
 
-    server = await get_credential(db, current_user.id, "jira", "server")
-    email  = await get_credential(db, current_user.id, "jira", "email")
-    token  = await get_credential(db, current_user.id, "jira", "token")
-
-    if not server or not email or not token:
+    try:
+        result = await execution_service.fetch_and_link_jira_context(
+            db,
+            execution_id=execution_id,
+            user_id=current_user.id,
+            issue_key=body.issue_key,
+        )
+    except execution_service.JiraCredentialsMissing:
         raise HTTPException(
             status_code=424,
             detail=(
@@ -168,17 +171,7 @@ async def fetch_jira(
                 "Guárdalas primero en PUT /credentials."
             ),
         )
-
-    from backend.services.pipeline_service import fetch_jira_context
-
-    # Load endpoint names from the DB (durable source of truth) so the AI anchors
-    # acceptance criteria to the EXACT Postman names — even if /tmp/api.json was purged.
-    ep_rows = await execution_repo.list_endpoints(db, execution_id)
-
-    # Hard guard: without endpoints in the DB, the AI invents endpoint names from
-    # the HU text and the criteria won't match anything during generation.
-    # Enforce the correct flow: upload → extract → fetch-jira.
-    if not ep_rows:
+    except execution_service.NoEndpointsExtracted:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -187,65 +180,17 @@ async def fetch_jira(
                 "antes de vincular el ticket Jira."
             ),
         )
-
-    endpoints_for_ai = [
-        {"nombre_peticion": ep.name, "metodo": ep.method, "url": ep.url}
-        for ep in ep_rows
-    ]
-
-    try:
-        # fetch_jira_context es síncrono (Jira + Gemini) → fuera del event loop.
-        context = await run_in_threadpool(
-            fetch_jira_context,
-            execution_id=execution_id,
-            server=server,
-            email=email,
-            token=token,
-            issue_key=body.issue_key,
-            endpoints=endpoints_for_ai or None,
-        )
-    except Exception as e:
-        logger.error("Error consultando Jira (fetch_jira_context): %s", e, exc_info=True)
+    except execution_service.JiraContextFetchFailed:
         raise HTTPException(
             status_code=502,
             detail="No se pudo consultar Jira. Revisa las credenciales e inténtalo de nuevo.",
         )
 
-    # Fetch the FULL Jira issue (description + metadata) and persist it,
-    # storing the AI-structured criteria alongside. This keeps the complete HU
-    # in the DB even after the 48h session cleanup wipes inputContext.json.
-    jira_issue_id = None
-    try:
-        # Construcción (autentica) + get_ticket_detail (red) fuera del event loop.
-        service = await run_in_threadpool(
-            JiraService, server=server, email=email, token=token
-        )
-        full_ticket = await run_in_threadpool(service.get_ticket_detail, body.issue_key)
-        jira_issue = await upsert_jira_issue(
-            db, current_user.id, full_ticket, structured_criteria=context
-        )
-        jira_issue_id = jira_issue.id
-    except Exception as exc:
-        # Persisting the full snapshot is best-effort — never block generation,
-        # pero sí dejar traza para no perder el fallo de forma silenciosa.
-        logger.warning("No se pudo persistir el snapshot completo de la HU: %s", exc, exc_info=True)
-        jira_issue_id = None
-
-    # Update execution with ticket info + link to the full HU record
-    await execution_repo.set_jira_context(
-        db,
-        execution_id,
-        issue_key=body.issue_key,
-        summary=context.get("contexto_negocio", ""),
-        jira_issue_id=jira_issue_id,
-    )
-
-    endpoint_count = len(context.get("endpoints", []))
     return FetchJiraResponse(
-        issue_key=body.issue_key,
+        issue_key=result.issue_key,
         context_ready=True,
-        endpoints_with_criteria=endpoint_count,
-        business_summary=context.get("contexto_negocio", ""),
+        endpoints_with_criteria=result.endpoints_with_criteria,
+        business_summary=result.business_summary,
     )
 
 
