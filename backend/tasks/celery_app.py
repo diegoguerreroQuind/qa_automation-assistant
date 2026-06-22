@@ -1,11 +1,3 @@
-import sys
-from pathlib import Path
-
-# Ensure project root (containing app/ and backend/) is always importable
-_root = Path(__file__).resolve().parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
 from celery import Celery
 from backend.config import settings
 

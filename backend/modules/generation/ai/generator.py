@@ -12,8 +12,8 @@ from functools import lru_cache
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
 
-from app.ai.prompts.cypress_prompt import CYPRESS_CUCUMBER_PROMPT
-from app.ai.prompts.jira_prompt import JIRA_PARSER_PROMPT
+from backend.modules.generation.ai.prompts.cypress_prompt import CYPRESS_CUCUMBER_PROMPT
+from backend.modules.generation.ai.prompts.jira_prompt import JIRA_PARSER_PROMPT
 
 # ---------------------------------------------------------------------------
 # Corporate network SSL workaround — only active when explicitly configured.

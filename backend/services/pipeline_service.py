@@ -1,7 +1,6 @@
 import json
 import re
 import shutil
-import sys
 from pathlib import Path
 from backend.config import settings
 
@@ -48,11 +47,6 @@ def _resolve_endpoint(endpoint: dict, env_vars: dict[str, str]) -> dict:
     endpoint["url_resuelta"] = resolved_url
     return endpoint
 
-# Ensure app/ is importable when running outside Docker
-_project_root = Path(__file__).parent.parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
 
 def get_session_dir(execution_id: str) -> Path:
     return Path(settings.sessions_base_dir) / execution_id
@@ -71,9 +65,9 @@ def extract_and_scaffold(
     Runs Postman extraction and Cypress scaffolding.
     Returns list of cleaned endpoints.
     """
-    from app.parsers.postman import extraer_peticiones
-    from app.parsers.environment import extraer_variables_entorno
-    from app.generators.cypress import crear_estructura_cypress
+    from backend.modules.generation.parsers.postman import extraer_peticiones
+    from backend.modules.generation.parsers.environment import extraer_variables_entorno
+    from backend.modules.generation.generators.cypress import crear_estructura_cypress
 
     session_dir = get_session_dir(execution_id)
     cypress_dir = get_cypress_project_dir(execution_id)
@@ -134,8 +128,8 @@ def fetch_jira_context(
     48h TTL cleanup, and without endpoint names the AI invents descriptive ones
     that won't match the real Postman names during generation.
     """
-    from app.parsers.jira_extractor import extraer_historia_jira
-    from app.ai.generator import estructurar_descripcion_jira
+    from backend.modules.generation.parsers.jira_extractor import extraer_historia_jira
+    from backend.modules.generation.ai.generator import estructurar_descripcion_jira
 
     session_dir = get_session_dir(execution_id)
     api_json_path = session_dir / "api.json"

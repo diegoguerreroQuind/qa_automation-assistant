@@ -12,7 +12,6 @@ Architecture:
     └── _publish_ws()              — Redis pub/sub → browser via FastAPI WS
 """
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -35,11 +34,6 @@ from backend.models.db import (
 )
 from backend.services.pipeline_service import get_session_dir, get_cypress_project_dir
 from backend.tasks.celery_app import celery_app
-
-# Ensure app/ (core framework) is importable inside the worker process
-_project_root = Path(__file__).resolve().parent.parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +337,7 @@ def _resolve_gemini_key(engine, user_id: str | None) -> str:
     rotated ENCRYPTION_KEY → InvalidTag) are swallowed so they degrade to "no key"
     rather than crashing the task.
     """
-    from app.ai.generator import _resolve_google_api_key
+    from backend.modules.generation.ai.generator import _resolve_google_api_key
 
     key = (_resolve_google_api_key() or "").strip()
     if key:
@@ -374,7 +368,7 @@ def _generate_single_endpoint(
     forwarded to this task, but the generator currently targets 'gemini-pro-latest'.
     Multi-model support is tracked for v1.1.
     """
-    from app.ai.generator import generar_test_cypress
+    from backend.modules.generation.ai.generator import generar_test_cypress
 
     # Base payload (always present — stored in DB)
     endpoint_payload: dict = {

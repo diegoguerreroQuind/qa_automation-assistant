@@ -49,9 +49,12 @@ Prioridad por dolor (acceso DB inline + lógica de negocio en router):
    Errores de dominio (JiraCredentialsMissing/NoEndpointsExtracted/
    JiraContextFetchFailed) que el router traduce a 424/409/502.
 4. **integrations / user_stories / auth** → repos respectivos. ← siguiente
-5. **Fusionar `app/` en `backend/modules/generation/`**: elimina los
-   `sys.path.insert` (`tasks/celery_app.py`, `generation_task.py`) y el riesgo
-   del Dockerfile. Hacerlo cuando exista paquete instalable (`pyproject.toml`).
+5. ~~**Fusionar `app/` en `backend/modules/generation/`**~~ ✅ HECHO. `app/`
+   eliminado; parsers/generators/ai viven en `backend/modules/generation/`.
+   Removidos los 3 `sys.path.insert` (celery_app, generation_task, pipeline_service)
+   y la dependencia invertida ya no lo es (generator importa backend.config como
+   sibling legítimo). Dockerfile: ya no copia `app/`. Verificado: 45 tests verdes
+   + worker Celery arranca y registra la tarea sin errores de import.
 6. **OCP en providers** (oauth `_provider_config`, integrations `*_KEYS`):
    registro/strategy por provider en vez de if/elif paralelos.
 7. **DIP en integraciones externas**: interfaces `LLMProvider` / `IssueTracker`
