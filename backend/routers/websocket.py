@@ -14,6 +14,7 @@ Authentication:
 """
 import asyncio
 import json
+import logging
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -27,6 +28,7 @@ from backend.security.jwt import decode_token
 from backend.services.ws_manager import ws_manager
 
 router = APIRouter(tags=["websocket"])
+logger = logging.getLogger("qa_assistant.ws")
 
 # WebSocket close codes (RFC 6455 custom range: 4000–4999)
 _WS_UNAUTHORIZED = 4001
@@ -74,15 +76,21 @@ async def websocket_endpoint(
     async def _relay_redis():
         """Forward every Redis pub/sub message to connected WebSocket clients."""
         async for message in pubsub.listen():
-            if message["type"] == "message":
-                try:
-                    data = json.loads(message["data"])
-                    await ws_manager.broadcast(execution_id, data)
-                    # Stop relay once generation is fully complete or fatally failed
-                    if data.get("type") in ("complete", "fatal_error"):
-                        break
-                except (json.JSONDecodeError, Exception):
-                    pass
+            if message["type"] != "message":
+                continue
+            try:
+                data = json.loads(message["data"])
+            except json.JSONDecodeError:
+                logger.warning("WS %s: mensaje pub/sub no es JSON válido, se ignora", execution_id)
+                continue
+            try:
+                await ws_manager.broadcast(execution_id, data)
+            except Exception:
+                logger.error("WS %s: fallo al retransmitir mensaje", execution_id, exc_info=True)
+                continue
+            # Stop relay once generation is fully complete or fatally failed
+            if data.get("type") in ("complete", "fatal_error"):
+                break
 
     try:
         redis_task = asyncio.create_task(_relay_redis())

@@ -1,5 +1,7 @@
+import logging
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from backend.models.database import get_db
@@ -22,6 +24,7 @@ from backend.services.jira_service import JiraService
 from backend.services.pipeline_service import get_session_dir, extract_and_scaffold
 
 router = APIRouter(prefix="/executions", tags=["executions"])
+logger = logging.getLogger("qa_assistant.executions")
 
 _MAX_COLLECTION_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
@@ -198,7 +201,9 @@ async def fetch_jira(
     ]
 
     try:
-        context = fetch_jira_context(
+        # fetch_jira_context es síncrono (Jira + Gemini) → fuera del event loop.
+        context = await run_in_threadpool(
+            fetch_jira_context,
             execution_id=execution_id,
             server=server,
             email=email,
@@ -207,21 +212,30 @@ async def fetch_jira(
             endpoints=endpoints_for_ai or None,
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error consultando Jira: {e}")
+        logger.error("Error consultando Jira (fetch_jira_context): %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo consultar Jira. Revisa las credenciales e inténtalo de nuevo.",
+        )
 
     # Fetch the FULL Jira issue (description + metadata) and persist it,
     # storing the AI-structured criteria alongside. This keeps the complete HU
     # in the DB even after the 48h session cleanup wipes inputContext.json.
     jira_issue_id = None
     try:
-        service = JiraService(server=server, email=email, token=token)
-        full_ticket = service.get_ticket_detail(body.issue_key)
+        # Construcción (autentica) + get_ticket_detail (red) fuera del event loop.
+        service = await run_in_threadpool(
+            JiraService, server=server, email=email, token=token
+        )
+        full_ticket = await run_in_threadpool(service.get_ticket_detail, body.issue_key)
         jira_issue = await upsert_jira_issue(
             db, current_user.id, full_ticket, structured_criteria=context
         )
         jira_issue_id = jira_issue.id
-    except Exception:
-        # Persisting the full snapshot is best-effort — never block generation
+    except Exception as exc:
+        # Persisting the full snapshot is best-effort — never block generation,
+        # pero sí dejar traza para no perder el fallo de forma silenciosa.
+        logger.warning("No se pudo persistir el snapshot completo de la HU: %s", exc, exc_info=True)
         jira_issue_id = None
 
     # Update execution with ticket info + link to the full HU record

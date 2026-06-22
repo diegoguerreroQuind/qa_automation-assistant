@@ -199,6 +199,10 @@ def generate_for_execution(
         _publish_ws(execution_id, {"type": "fatal_error", "message": str(exc)})
         logger.error("Task failed execution_id=%s error=%s", execution_id, exc, exc_info=True)
         raise self.retry(exc=exc)
+    finally:
+        # Libera el pool de conexiones en todas las rutas (éxito, fallo, retry):
+        # un engine por tarea sin dispose fuga conexiones en el worker bajo carga.
+        engine.dispose()
 
 
 # ---------------------------------------------------------------------------

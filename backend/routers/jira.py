@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +42,8 @@ async def _get_jira_service(user_id: str, db: AsyncSession) -> JiraService:
     if not server or not email or not token:
         raise HTTPException(status_code=424, detail=_JIRA_CREDS_MISSING)
 
-    return JiraService(server=server, email=email, token=token)
+    # JIRA() autentica (I/O de red) al construirse → fuera del event loop.
+    return await run_in_threadpool(JiraService, server=server, email=email, token=token)
 
 
 @router.post(
@@ -74,16 +76,18 @@ async def list_tickets(
         assignee_email = await get_credential(db, current_user.id, "jira", "email")
 
     try:
-        tickets = service.get_filtered_tickets(
+        tickets = await run_in_threadpool(
+            service.get_filtered_tickets,
             project_key=body.project_key,
             status_categories=body.status_categories,
             statuses=body.statuses,
             assignee_email=assignee_email,
             only_open_sprints=body.only_open_sprints,
         )
-        # Persist the full HU snapshot for every listed ticket
+        # Persist the full HU snapshot for every listed ticket (un solo commit)
         for ticket in tickets:
-            await upsert_jira_issue(db, current_user.id, ticket)
+            await upsert_jira_issue(db, current_user.id, ticket, commit=False)
+        await db.commit()
 
         return JiraTicketsResponse(
             tickets=tickets,
@@ -151,7 +155,7 @@ async def get_ticket_detail(
     """
     service = await _get_jira_service(current_user.id, db)
     try:
-        ticket = service.get_ticket_detail(issue_key)
+        ticket = await run_in_threadpool(service.get_ticket_detail, issue_key)
         await upsert_jira_issue(db, current_user.id, ticket)
         return ticket
     except HTTPException:

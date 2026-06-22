@@ -19,6 +19,7 @@ Contrato de sincronización (equivalente al body que el frontend envía):
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,8 +132,13 @@ async def sync_user_stories(
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_CREDS_MISSING)
 
     try:
-        service = JiraService(server=creds["server"], email=creds["email"], token=creds["token"])
-        tickets = service.get_filtered_tickets(
+        # JIRA() autentica al construirse y search_issues hace I/O de red:
+        # ambos fuera del event loop para no bloquear el servidor async.
+        service = await run_in_threadpool(
+            JiraService, server=creds["server"], email=creds["email"], token=creds["token"]
+        )
+        tickets = await run_in_threadpool(
+            service.get_filtered_tickets,
             project_key=project.jira_project_key,
             status_categories=SYNC_STATUS_CATEGORIES,
             statuses=None,          # Usar statusCategory (robusto, no depende del idioma)
@@ -140,7 +146,8 @@ async def sync_user_stories(
             only_open_sprints=True,
         )
         for ticket in tickets:
-            await upsert_project_jira_issue(db, project_id, current_user.id, ticket)
+            await upsert_project_jira_issue(db, project_id, current_user.id, ticket, commit=False)
+        await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.error("Error consultando Jira: %s", exc, exc_info=True)
         raise HTTPException(

@@ -121,6 +121,23 @@ async def get_project_integration(db: AsyncSession, project_id: str) -> Integrat
     return result.scalar_one_or_none()
 
 
+async def get_project_integrations_map(
+    db: AsyncSession, project_ids: list[str]
+) -> dict[str, Integration]:
+    """
+    Devuelve {project_id: Integration} para varios proyectos en UNA sola query.
+    Evita el N+1 de llamar a get_project_integration por cada proyecto al listar.
+    """
+    if not project_ids:
+        return {}
+    result = await db.execute(
+        select(ProjectIntegration.project_id, Integration)
+        .join(Integration, ProjectIntegration.integration_id == Integration.id)
+        .where(ProjectIntegration.project_id.in_(project_ids))
+    )
+    return {project_id: integration for project_id, integration in result.all()}
+
+
 async def set_project_credential(db: AsyncSession, project_id: str, integration_id: str) -> None:
     """
     Asocia (reemplazando) la credencial del proyecto. Como un proyecto solo

@@ -12,9 +12,8 @@ from backend.services import integrations_service as integrations_svc
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-async def _project_out(db: AsyncSession, project: Project) -> ProjectOut:
-    """Serializa un proyecto incluyendo su credencial asociada (si la tiene)."""
-    integration = await integrations_svc.get_project_integration(db, project.id)
+def _serialize_project(project: Project, integration) -> ProjectOut:
+    """Construye el ProjectOut a partir de un proyecto y su integración (ya resuelta)."""
     credential = (
         CredentialRef(
             id=integration.id,
@@ -32,6 +31,12 @@ async def _project_out(db: AsyncSession, project: Project) -> ProjectOut:
         created_at=project.created_at,
         credential=credential,
     )
+
+
+async def _project_out(db: AsyncSession, project: Project) -> ProjectOut:
+    """Serializa un proyecto resolviendo su credencial con una query puntual."""
+    integration = await integrations_svc.get_project_integration(db, project.id)
+    return _serialize_project(project, integration)
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
@@ -61,7 +66,11 @@ async def list_projects(
         select(Project).where(Project.user_id == current_user.id).order_by(Project.created_at.desc())
     )
     projects = result.scalars().all()
-    return [await _project_out(db, p) for p in projects]
+    # Resuelve todas las credenciales en UNA query (evita N+1 al listar).
+    integrations = await integrations_svc.get_project_integrations_map(
+        db, [p.id for p in projects]
+    )
+    return [_serialize_project(p, integrations.get(p.id)) for p in projects]
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

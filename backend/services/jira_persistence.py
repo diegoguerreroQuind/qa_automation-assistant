@@ -22,6 +22,7 @@ async def upsert_jira_issue(
     user_id: str,
     ticket: JiraTicket,
     structured_criteria: dict | None = None,
+    commit: bool = True,
 ) -> JiraIssue:
     """
     Creates or updates the full JiraIssue record for (user_id, issue_key).
@@ -32,6 +33,9 @@ async def upsert_jira_issue(
         ticket:               Enriched JiraTicket from JiraService (includes raw).
         structured_criteria:  Optional AI-structured criteria dict to persist
                               (only set during the fetch-jira generation flow).
+        commit:               Si False, solo hace flush y deja el commit al
+                              llamador (para upserts en lote: un único commit
+                              tras el loop en vez de uno por ticket — evita N+1).
 
     Returns:
         The persisted JiraIssue ORM object.
@@ -88,8 +92,11 @@ async def upsert_jira_issue(
         )
         db.add(issue)
 
-    await db.commit()
-    await db.refresh(issue)
+    if commit:
+        await db.commit()
+        await db.refresh(issue)
+    else:
+        await db.flush()
     return issue
 
 
@@ -98,10 +105,14 @@ async def upsert_project_jira_issue(
     project_id: str,
     user_id: str,
     ticket: JiraTicket,
+    commit: bool = True,
 ) -> JiraIssue:
     """
     Upsert de una HU asociada a un proyecto, keyed by (project_id, issue_key).
     Cada proyecto mantiene su propio repositorio de Historias de Usuario.
+
+    commit: si False, solo hace flush y deja el commit al llamador (upserts en
+    lote → un único commit tras el loop, evita N+1).
     """
     result = await db.execute(
         select(JiraIssue).where(
@@ -147,6 +158,9 @@ async def upsert_project_jira_issue(
         )
         db.add(issue)
 
-    await db.commit()
-    await db.refresh(issue)
+    if commit:
+        await db.commit()
+        await db.refresh(issue)
+    else:
+        await db.flush()
     return issue
