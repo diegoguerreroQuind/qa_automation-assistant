@@ -73,12 +73,15 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
+# El JWT viaja en el header Authorization (Bearer), no en cookies, por lo que
+# allow_credentials debe ser False; eso además evita la combinación insegura de
+# credenciales + wildcards. Métodos y headers se restringen explícitamente.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -106,10 +109,12 @@ async def log_requests(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Error interno del servidor", "type": type(exc).__name__},
-    )
+    content = {"detail": "Error interno del servidor"}
+    # El nombre del tipo de excepción filtra detalles de implementación; solo se
+    # expone fuera de producción para facilitar el debugging local.
+    if settings.environment != "production":
+        content["type"] = type(exc).__name__
+    return JSONResponse(status_code=500, content=content)
 
 
 # ---------------------------------------------------------------------------

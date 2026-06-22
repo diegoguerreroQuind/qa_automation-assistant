@@ -67,18 +67,20 @@ class JiraService:
         """
         clauses: list[str] = []
         if project_key:
-            clauses.append(f'project = "{project_key}"')
+            clauses.append(f"project = {self._jql_literal(project_key)}")
         if assignee_email:
-            clauses.append(f'assignee = "{assignee_email}"')
+            clauses.append(f"assignee = {self._jql_literal(assignee_email)}")
         if only_open_sprints:
             clauses.append("sprint in openSprints()")
 
         if statuses:
-            status_clause = " OR ".join(f'status = "{s}"' for s in statuses)
+            status_clause = " OR ".join(
+                f"status = {self._jql_literal(s)}" for s in statuses
+            )
             clauses.append(f"({status_clause})")
         else:
             cats = status_categories or ["In Progress"]
-            cat_clause = ", ".join(f'"{c}"' for c in cats)
+            cat_clause = ", ".join(self._jql_literal(c) for c in cats)
             clauses.append(f"statusCategory in ({cat_clause})")
 
         jql = " AND ".join(clauses) if clauses else "order by created DESC"
@@ -130,6 +132,19 @@ class JiraService:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+    @staticmethod
+    def _jql_literal(value: str) -> str:
+        """
+        Escapa un valor para incluirlo de forma segura como literal entre
+        comillas en JQL, evitando inyección JQL vía project_key / assignee /
+        nombres de estado (que provienen de input de usuario).
+
+        En JQL, dentro de una cadena entrecomillada se escapan la barra
+        invertida y la comilla doble.
+        """
+        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
     @staticmethod
     def _person(person) -> str | None:
         """Returns the email if available, else the display name."""

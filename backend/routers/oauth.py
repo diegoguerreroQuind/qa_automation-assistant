@@ -28,6 +28,7 @@ from backend.config import settings
 from backend.models.database import get_db
 from backend.models.db import User, UserRole
 from backend.security.jwt import create_access_token
+from backend.services.redis_client import get_redis
 
 logger = logging.getLogger("qa_assistant.oauth")
 
@@ -72,10 +73,18 @@ def _is_configured(cfg: dict) -> bool:
     return bool(cfg["client_id"] and cfg["client_secret"])
 
 
+def _state_key(nonce: str) -> str:
+    return f"oauth_state:{nonce}"
+
+
 def _sign_state(provider: str) -> str:
+    nonce = secrets.token_urlsafe(16)
+    # El nonce se persiste en Redis con TTL y se consume una sola vez en el
+    # callback, de modo que un `state` capturado no pueda reutilizarse (replay).
+    get_redis().setex(_state_key(nonce), STATE_TTL_SECONDS, provider)
     payload = {
         "provider": provider,
-        "nonce": secrets.token_urlsafe(16),
+        "nonce": nonce,
         "exp": datetime.now(timezone.utc) + timedelta(seconds=STATE_TTL_SECONDS),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
@@ -86,7 +95,14 @@ def _verify_state(state: str, provider: str) -> bool:
         payload = jwt.decode(state, settings.secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         return False
-    return payload.get("provider") == provider
+    if payload.get("provider") != provider:
+        return False
+    nonce = payload.get("nonce")
+    if not nonce:
+        return False
+    # Consumo atómico: DEL devuelve 1 si el nonce existía (primer uso válido),
+    # 0 si ya fue usado o expiró → rechaza el replay.
+    return get_redis().delete(_state_key(nonce)) == 1
 
 
 def _frontend_redirect(*, token: str | None = None, error: str | None = None) -> RedirectResponse:
@@ -140,13 +156,19 @@ async def oauth_callback(
     try:
         async with httpx.AsyncClient(timeout=15, verify=verify) as client:
             access_token = await _exchange_code(client, cfg, code)
-            email, name = await _fetch_identity(client, cfg, access_token)
+            email, name, email_verified = await _fetch_identity(client, cfg, access_token)
     except Exception as exc:  # noqa: BLE001 — cualquier fallo de red/proveedor
         logger.error("OAuth %s callback falló: %s", provider, exc, exc_info=True)
         return _frontend_redirect(error="oauth_exchange_failed")
 
     if not email:
         return _frontend_redirect(error="email_not_available")
+    # Sin verificar el email, un atacante con una cuenta del proveedor de email
+    # no verificado podría tomar control de una cuenta existente (el upsert hace
+    # match por email).
+    if not email_verified:
+        logger.warning("OAuth %s: email %s no verificado por el proveedor", provider, email)
+        return _frontend_redirect(error="email_not_verified")
 
     user = await _upsert_oauth_user(db, email=email, name=name or email.split("@")[0])
     jwt_token = create_access_token(user.id, user.email)
@@ -175,14 +197,16 @@ async def _exchange_code(client: httpx.AsyncClient, cfg: dict, code: str) -> str
 
 async def _fetch_identity(
     client: httpx.AsyncClient, cfg: dict, access_token: str
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, bool]:
     resp = await client.get(
         cfg["userinfo_url"], headers={"Authorization": f"Bearer {access_token}"}
     )
     resp.raise_for_status()
     info = resp.json()
-    # Google → {email, name}; Atlassian → {email, name, account_id}
-    return info.get("email"), info.get("name")
+    # Google → {email, verified_email, name}; Atlassian → {email, email_verified, name}
+    # Ambos proveedores devuelven el flag; si faltara, se asume NO verificado.
+    verified = bool(info.get("verified_email", info.get("email_verified", False)))
+    return info.get("email"), info.get("name"), verified
 
 
 async def _upsert_oauth_user(db: AsyncSession, *, email: str, name: str) -> User:

@@ -16,6 +16,8 @@ Contrato de sincronización (equivalente al body que el frontend envía):
   y persiste cada HU asociada al proyecto.
 - GET  /projects/{id}/user-stories: devuelve las HU ya almacenadas (sin Jira).
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +31,7 @@ from backend.services.jira_persistence import upsert_project_jira_issue
 from backend.services.jira_service import JiraService
 
 router = APIRouter(tags=["user-stories"])
+logger = logging.getLogger("qa_assistant.user_stories")
 
 # Categorías de estado del tablero Jira que se importan.
 # Usar statusCategory (estable entre workflows) en lugar de nombres de estado
@@ -139,8 +142,10 @@ async def sync_user_stories(
         for ticket in tickets:
             await upsert_project_jira_issue(db, project_id, current_user.id, ticket)
     except Exception as exc:  # noqa: BLE001
+        logger.error("Error consultando Jira: %s", exc, exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Error consultando Jira: {exc}"
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No se pudo consultar Jira. Revisa las credenciales e inténtalo de nuevo.",
         )
 
     return await _stored_response(db, project_id)

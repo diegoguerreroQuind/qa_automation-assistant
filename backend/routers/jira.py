@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,11 @@ from backend.services.jira_service import JiraService
 from backend.services.jira_persistence import upsert_jira_issue
 
 router = APIRouter(prefix="/jira", tags=["jira"])
+logger = logging.getLogger("qa_assistant.jira")
+
+# Mensaje genérico al cliente; el detalle crudo de Jira (que puede incluir URLs
+# internas o trazas) se registra solo en el log del servidor.
+_JIRA_QUERY_FAILED = "No se pudo consultar Jira. Revisa las credenciales e inténtalo de nuevo."
 
 _JIRA_CREDS_MISSING = (
     "Credenciales Jira no configuradas. "
@@ -92,7 +99,8 @@ async def list_tickets(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error consultando Jira: {e}")
+        logger.error("Error consultando Jira: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail=_JIRA_QUERY_FAILED)
 
 
 @router.get(
@@ -149,4 +157,5 @@ async def get_ticket_detail(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Error consultando Jira: {e}")
+        logger.error("Error consultando Jira: %s", e, exc_info=True)
+        raise HTTPException(status_code=502, detail=_JIRA_QUERY_FAILED)

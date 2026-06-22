@@ -1,14 +1,15 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import redis as redis_sync
 
 from backend.config import settings
 from backend.models.database import get_db
 from backend.models.db import User
+from backend.services.redis_client import get_redis
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -29,24 +30,25 @@ def create_access_token(user_id: str, email: str) -> str:
 # auto-expires the entry when the token would have expired anyway.
 # ---------------------------------------------------------------------------
 
+def _revocation_key(token: str) -> str:
+    """
+    Clave Redis para un token revocado. Se hashea el token (SHA-256) en lugar de
+    almacenarlo en claro: si Redis se compromete, no se exponen JWTs válidos.
+    """
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return f"revoked_token:{digest}"
+
+
 def revoke_token(token: str, remaining_seconds: int) -> None:
     """Add a token to the Redis revocation list."""
     if remaining_seconds <= 0:
         return  # Already expired — nothing to revoke
-    r = redis_sync.from_url(settings.redis_url)
-    try:
-        r.setex(f"revoked_token:{token}", remaining_seconds, "1")
-    finally:
-        r.close()
+    get_redis().setex(_revocation_key(token), remaining_seconds, "1")
 
 
 def is_token_revoked(token: str) -> bool:
     """Return True if the token is in the Redis revocation list."""
-    r = redis_sync.from_url(settings.redis_url)
-    try:
-        return r.exists(f"revoked_token:{token}") > 0
-    finally:
-        r.close()
+    return get_redis().exists(_revocation_key(token)) > 0
 
 
 # ---------------------------------------------------------------------------

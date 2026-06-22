@@ -93,6 +93,17 @@ class Settings(BaseSettings):
             raise ValueError("ENCRYPTION_KEY debe ser exactamente 32 bytes (64 caracteres hex)")
         return v
 
+    @model_validator(mode="after")
+    def require_secrets_in_production(self) -> "Settings":
+        """En producción, ENCRYPTION_KEY no puede faltar: sin ella, cifrar/descifrar
+        credenciales revienta en runtime en vez de fallar al arrancar."""
+        if self.environment == "production" and not self.encryption_key:
+            raise ValueError(
+                "ENCRYPTION_KEY es obligatoria en producción. "
+                "Genera una con: python3 -c \"import secrets; print(secrets.token_bytes(32).hex())\""
+            )
+        return self
+
     @property
     def encryption_key_bytes(self) -> bytes:
         if not self.encryption_key:
