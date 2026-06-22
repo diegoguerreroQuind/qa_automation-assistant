@@ -1,15 +1,15 @@
-from datetime import datetime, timezone
 import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
 
 from backend.core.constants import CYPRESS_FEATURES_SUBDIR, CYPRESS_STEPS_SUBDIR
 from backend.models.database import get_db
-from backend.models.db import User, Project, Execution, GeneratedFile
+from backend.models.db import User
+from backend.repositories import execution_repository as execution_repo
+from backend.repositories import file_repository as file_repo
 from backend.schemas.executions import FileOut, FileUpdate
 from backend.security.jwt import get_current_user
 from backend.services.pipeline_service import get_cypress_project_dir
@@ -25,10 +25,7 @@ async def list_files(
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_ownership(execution_id, current_user.id, db)
-    result = await db.execute(
-        select(GeneratedFile).where(GeneratedFile.execution_id == execution_id)
-    )
-    return result.scalars().all()
+    return await file_repo.list_for_execution(db, execution_id)
 
 
 @router.get("/{execution_id}/files/{filename}", response_model=FileOut)
@@ -39,13 +36,7 @@ async def get_file(
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_ownership(execution_id, current_user.id, db)
-    result = await db.execute(
-        select(GeneratedFile).where(
-            GeneratedFile.execution_id == execution_id,
-            GeneratedFile.file_name == filename,
-        )
-    )
-    gf = result.scalar_one_or_none()
+    gf = await file_repo.get_by_name(db, execution_id, filename)
     if not gf:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     return {"id": gf.id, "file_name": gf.file_name, "file_type": gf.file_type, "file_content": gf.file_content}
@@ -62,22 +53,11 @@ async def update_file(
     """RF-004: Manual edits override AI-generated content in both DB and disk."""
     await _verify_ownership(execution_id, current_user.id, db)
 
-    result = await db.execute(
-        select(GeneratedFile).where(
-            GeneratedFile.execution_id == execution_id,
-            GeneratedFile.file_name == filename,
-        )
-    )
-    gf = result.scalar_one_or_none()
+    gf = await file_repo.get_by_name(db, execution_id, filename)
     if not gf:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
-    await db.execute(
-        update(GeneratedFile)
-        .where(GeneratedFile.id == gf.id)
-        .values(file_content=body.content, updated_at=datetime.now(timezone.utc))
-    )
-    await db.commit()
+    await file_repo.update_content(db, gf, body.content)
 
     # Mirror edit to disk so the next ZIP download reflects manual changes
     cypress_dir = get_cypress_project_dir(execution_id)
@@ -112,10 +92,7 @@ async def download_zip(
             raise HTTPException(status_code=422, detail=str(e))
     else:
         # Filesystem was purged — rebuild ZIP from DB content
-        result = await db.execute(
-            select(GeneratedFile).where(GeneratedFile.execution_id == execution_id)
-        )
-        files = result.scalars().all()
+        files = await file_repo.list_for_execution(db, execution_id)
         if not files:
             raise HTTPException(
                 status_code=404,
@@ -142,31 +119,33 @@ def _resolve_disk_path(cypress_dir: Path, filename: str) -> Path:
     """
     Maps a generated filename to its absolute path on disk.
 
-    Security: enforces a whitelist of allowed extensions and validates that
-    the resolved path stays inside cypress_dir to prevent path traversal attacks.
+    Security: enforces a whitelist of allowed extensions, rechaza separadores de
+    ruta en el nombre, y valida que la ruta resuelta quede DENTRO de cypress_dir
+    (con is_relative_to, no con prefijos de string) para prevenir path traversal.
     """
     # Whitelist: only .feature and .ts are valid generated file types
     if not (filename.endswith(".feature") or filename.endswith(".ts")):
         raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
+
+    # El nombre debe ser un archivo plano: sin separadores, sin "..", sin NUL.
+    if filename != Path(filename).name or filename in {".", ".."} or "\x00" in filename:
+        raise HTTPException(status_code=400, detail="Nombre de archivo inválido")
 
     if filename.endswith(".feature"):
         candidate = cypress_dir / CYPRESS_FEATURES_SUBDIR / filename
     else:
         candidate = cypress_dir / CYPRESS_STEPS_SUBDIR / filename
 
-    # Anti path-traversal: resolve symlinks and ".." segments, then verify containment
+    # Anti path-traversal: resuelve symlinks/".." y verifica contención real.
+    base = cypress_dir.resolve()
     resolved = candidate.resolve()
-    if not str(resolved).startswith(str(cypress_dir.resolve())):
+    if not resolved.is_relative_to(base):
         raise HTTPException(status_code=403, detail="Acceso denegado")
 
     return resolved
 
 
 async def _verify_ownership(execution_id: str, user_id: str, db: AsyncSession) -> None:
-    result = await db.execute(
-        select(Execution)
-        .join(Project, Execution.project_id == Project.id)
-        .where(Execution.id == execution_id, Project.user_id == user_id)
-    )
-    if not result.scalar_one_or_none():
+    # Reutiliza la misma query de ownership del repositorio de ejecuciones.
+    if not await execution_repo.get_execution_for_user(db, execution_id, user_id):
         raise HTTPException(status_code=404, detail="Ejecución no encontrada")

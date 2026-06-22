@@ -41,11 +41,11 @@ backend/  (futuro: src/qa_assistant/ con pyproject.toml, sin sys.path hacks)
 
 Prioridad por dolor (acceso DB inline + lógica de negocio en router):
 
-1. **projects** (15 ops inline) → `project_repository` + mover serialización.
-2. **files** (13 ops inline) → `file_repository` + endurecer anti-path-traversal
-   (`is_relative_to` en vez de `startswith`).
+1. ~~**projects** (15 ops inline) → `project_repository`~~ ✅ HECHO.
+2. ~~**files** (13 ops inline) → `file_repository` + endurecer anti-path-traversal
+   (`is_relative_to` + rechazo de separadores)~~ ✅ HECHO.
 3. **fetch_jira** → extraer la orquestación (~80 líneas) del router a un
-   `execution_service.fetch_and_link_jira_context()` (use case).
+   `execution_service.fetch_and_link_jira_context()` (use case). ← siguiente
 4. **integrations / user_stories / auth** → repos respectivos.
 5. **Fusionar `app/` en `backend/modules/generation/`**: elimina los
    `sys.path.insert` (`tasks/celery_app.py`, `generation_task.py`) y el riesgo
