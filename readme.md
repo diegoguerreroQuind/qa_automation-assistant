@@ -3,6 +3,12 @@
 
 Un framework innovador impulsado por Inteligencia Artificial diseñado para potenciar a los ingenieros de pruebas en la generación de automatización enfocada a APIs, integrando Python, Cypress, Cucumber y modelos de IA generativa.
 
+> **Nota (arquitectura):** este repositorio es ahora el **backend** (FastAPI) +
+> el core de generación (`app/`). El **frontend** (React + Vite) se extrajo a su
+> propio repositorio: **`qa-assistant-frontend`**. El contrato entre ambos es una
+> API HTTP + JWT (variables `VITE_API_URL` / `VITE_WS_URL` en el frontend;
+> `ALLOWED_ORIGINS` en el backend). Ver `docs/architecture-roadmap.md`.
+
 ---
 
 ## 📖 Tabla de Contenidos
