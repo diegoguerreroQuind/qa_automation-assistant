@@ -1,3 +1,9 @@
+# ──────────────────────────────────────────────────────────────────────────
+# QA AI Assistant — Backend (FastAPI + Celery)
+# Solo se versiona código fuente, migraciones, infra y plantillas. Nada de
+# secretos, entornos virtuales, bases de datos locales ni artefactos generados.
+# ──────────────────────────────────────────────────────────────────────────
+
 ### Python
 __pycache__/
 *.py[cod]
@@ -5,48 +11,45 @@ __pycache__/
 *.pyd
 *.so
 *.egg-info/
-dist/
 build/
+dist/
 
-# Virtual environments
+### Entornos virtuales
 .venv/
-venv/   
+venv/
 env/
 
-# Tools / IDE
+### Caches de herramientas / tests
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+### Entorno / secretos
+# Se ignoran todos los .env EXCEPTO la plantilla versionada .env.example
+.env
+.env.*
+!.env.example
+
+### Bases de datos / dumps locales
+*.db
+*.db.*
+*.bak
+*.rdb
+dump.rdb
+
+### Logs
+*.log
+
+### IDE / editores / metadata local
 .vscode/
 .idea/
+.cursor/
+.claude/
 *.swp
 *.swo
 .DS_Store
 
-### Node / Cypress
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Cypress artifacts
-cypress/videos/
-cypress/screenshots/
-cypress/downloads/
-
-### Environment / secrets
-.env
-.env.*
-
-### Cursor / editor metadata
-.cursor/
-
-# SQLite local dev DB
-qa_assistant.db
-*.db
-*.bak
-
-# Redis dumps
-*.rdb
-dump.rdb
-
-# TypeScript incremental build cache
+### TypeScript incremental build cache (heredado; el frontend vive en otro repo)
 *.tsbuildinfo
