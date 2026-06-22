@@ -37,6 +37,15 @@ async def get_execution_for_user(
     return result.scalar_one_or_none()
 
 
+async def list_for_project(db: AsyncSession, project_id: str) -> list[Execution]:
+    result = await db.execute(
+        select(Execution)
+        .where(Execution.project_id == project_id)
+        .order_by(Execution.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def list_endpoints(db: AsyncSession, execution_id: str) -> list[Endpoint]:
     result = await db.execute(
         select(Endpoint).where(Endpoint.execution_id == execution_id)

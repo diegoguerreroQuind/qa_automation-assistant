@@ -69,6 +69,28 @@ async def test_delete_project(client, auth_headers, project_id):
     assert listing.json() == []
 
 
+async def test_list_project_executions_empty(client, auth_headers, project_id):
+    resp = await client.get(f"/projects/{project_id}/executions", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_list_project_executions_after_create(client, auth_headers, project_id):
+    await client.post(
+        "/executions",
+        headers=auth_headers,
+        json={"project_id": project_id, "ai_model": "gemini-pro-latest"},
+    )
+    resp = await client.get(f"/projects/{project_id}/executions", headers=auth_headers)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+async def test_list_executions_unknown_project_404(client, auth_headers):
+    resp = await client.get("/projects/no-existe/executions", headers=auth_headers)
+    assert resp.status_code == 404
+
+
 async def test_other_user_cannot_see_project(client, auth_headers, project_id):
     """El proyecto de un usuario no es visible ni accesible para otro."""
     from backend.tests.conftest import _register_and_login
