@@ -38,3 +38,15 @@ cypress/downloads/
 
 ### Cursor / editor metadata
 .cursor/
+
+# SQLite local dev DB
+qa_assistant.db
+*.db
+*.bak
+
+# Redis dumps
+*.rdb
+dump.rdb
+
+# TypeScript incremental build cache
+*.tsbuildinfo

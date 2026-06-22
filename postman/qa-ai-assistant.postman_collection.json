@@ -1,0 +1,892 @@
+{
+  "info": {
+    "_postman_id": "b8d4f3e1-9a5c-4f2a-8e3d-7c1b2d3e4f50",
+    "name": "QA AI Assistant API",
+    "description": "# QA AI Assistant — Backend API\n\nColección completa para verificar manualmente todos los endpoints del backend FastAPI que orquesta el flujo **Postman + Jira → Cypress BDD**.\n\n## 🚀 Inicio rápido\n\n1. Importa esta colección en Postman.\n2. Abre la pestaña **Variables** de la colección y ajusta:\n   - `baseUrl` (por defecto `http://localhost:8000`)\n   - `email` y `password` con tu usuario\n3. Ejecuta `🔐 Auth → Login` — el script guarda automáticamente `access_token`.\n4. Sigue el flujo en orden: `Credentials → Projects → Jira → Pipeline → Files`.\n\n## 📦 Variables automáticas\nLos requests guardan en variables de colección los IDs útiles para encadenar pruebas:\n- `access_token`     ← Login\n- `project_id`       ← Create Project\n- `execution_id`     ← Create Execution\n- `issue_key`        ← List Jira (toma el primero)\n- `endpoint_ids`     ← Extract Endpoints (lista CSV)\n- `file_name`        ← List Files (primer archivo)\n\n## 🔐 Auth\nTodos los endpoints excepto `/health`, `/auth/login` y `/auth/register` requieren `Authorization: Bearer {{access_token}}`. La colección lo añade automáticamente.\n\n## 🔌 WebSocket\nPostman ≥ 10 soporta WebSocket. Crea una conexión a `ws://localhost:8000/ws/executions/{{execution_id}}?token={{access_token}}` para ver el progreso en tiempo real durante la generación.\n\n## 📚 Más detalles\nVer `postman/README.md` en el repo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{access_token}}", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request hook — runs before every request in the collection.",
+          "// Useful for logging or token-refresh logic. Currently no-op.",
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8000", "type": "string" },
+    { "key": "email", "value": "diego.guerrero@quind.io", "type": "string" },
+    { "key": "password", "value": "CAMBIA_ESTO", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "project_id", "value": "", "type": "string" },
+    { "key": "execution_id", "value": "", "type": "string" },
+    { "key": "issue_key", "value": "EF-11", "type": "string" },
+    { "key": "endpoint_ids", "value": "", "type": "string" },
+    { "key": "file_name", "value": "", "type": "string" },
+    { "key": "jira_project_key", "value": "EF", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "🩺 0. Health & Docs",
+      "description": "Endpoints públicos. No requieren autenticación.",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Estado del servicio. Útil para healthchecks de Docker/CI.\n\n**Respuesta esperada (200):**\n```json\n{\n  \"status\": \"ok\",\n  \"version\": \"1.0.0\",\n  \"environment\": \"development\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Abrir Swagger UI (docs)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/docs", "host": ["{{baseUrl}}"], "path": ["docs"] },
+            "description": "Devuelve el HTML del Swagger UI generado por FastAPI. Útil para explorar la API de forma interactiva en el navegador."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 1. Auth",
+      "description": "Registro, login, logout y obtención del usuario actual. El `Login` guarda automáticamente el `access_token` en una variable de colección.",
+      "item": [
+        {
+          "name": "Register (nuevo usuario)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created o 409 Conflict (ya existe)', () => {",
+                  "  pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"name\": \"Diego Guerrero\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Crea un usuario nuevo (role 'qa' por defecto).\n\n**Body:**\n```json\n{\n  \"email\": \"foo@quind.io\",\n  \"name\": \"Foo Bar\",\n  \"password\": \"min 8 chars\"\n}\n```\n\n**Errores:**\n- `409` — email ya registrado"
+          },
+          "response": []
+        },
+        {
+          "name": "Login (guarda access_token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json();",
+                  "pm.test('contiene access_token', () => pm.expect(data.access_token).to.be.a('string'));",
+                  "pm.collectionVariables.set('access_token', data.access_token);",
+                  "console.log('🔑 Token guardado (expira en', data.expires_in_hours, 'h)');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Autentica con email + password y devuelve un JWT (válido 12h).\n\n**El script de Tests guarda automáticamente el token** en la variable de colección `access_token` para que el resto de la colección lo use sin manualidad.\n\n**Respuesta (200):**\n```json\n{\n  \"access_token\": \"eyJhbGc...\",\n  \"token_type\": \"bearer\",\n  \"expires_in_hours\": 12\n}\n```\n\n**Errores:**\n- `401` — credenciales inválidas"
+          },
+          "response": []
+        },
+        {
+          "name": "Me (usuario actual)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Devuelve el usuario asociado al JWT.\n\n**Respuesta (200):**\n```json\n{\n  \"id\": \"uuid\",\n  \"email\": \"diego@quind.io\",\n  \"name\": \"Diego\",\n  \"role\": \"qa\"\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout (revoca token)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+            "description": "Añade el JWT actual a la Token Revocation List (Redis) hasta su expiración natural.\n\n**Respuesta:** `204 No Content`\n\nDespués del logout, el token deja de funcionar incluso si aún no ha expirado."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔑 2. Credentials",
+      "description": "Cifradas con AES-256-GCM. Se guardan en la tabla `credentials` por (user_id, provider, key_name). Para Jira son obligatorias 3 claves: `server`, `email`, `token`.",
+      "item": [
+        {
+          "name": "Save — Jira server",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"jira\",\n  \"key_name\": \"server\",\n  \"value\": \"https://tu-organizacion.atlassian.net\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Guarda la URL base de Jira (sin slash final). Idempotente: si la (provider, key_name) ya existe, la sobrescribe."
+          },
+          "response": []
+        },
+        {
+          "name": "Save — Jira email",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"jira\",\n  \"key_name\": \"email\",\n  \"value\": \"{{email}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Email Atlassian (NO el de tu app interna)."
+          },
+          "response": []
+        },
+        {
+          "name": "Save — Jira token (API token)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"jira\",\n  \"key_name\": \"token\",\n  \"value\": \"<TU_ATLASSIAN_API_TOKEN>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Atlassian API Token (créalo en https://id.atlassian.com/manage-profile/security/api-tokens). ⚠️ El `key_name` DEBE ser exactamente `token` (no `api_token`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Save — Gemini API key (opcional)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"gemini\",\n  \"key_name\": \"api_key\",\n  \"value\": \"<GOOGLE_API_KEY>\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Alternativa a tener `GOOGLE_API_KEY` en `.env`. Útil si quieres rotar la key sin tocar el archivo de entorno."
+          },
+          "response": []
+        },
+        {
+          "name": "List — credenciales guardadas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/credentials", "host": ["{{baseUrl}}"], "path": ["credentials"] },
+            "description": "Lista los providers y key_names guardados (NUNCA muestra los valores).\n\n**Respuesta:**\n```json\n[\n  { \"provider\": \"jira\", \"keys\": [\"server\", \"email\", \"token\"] },\n  { \"provider\": \"gemini\", \"keys\": [\"api_key\"] }\n]\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete — credencial específica",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/credentials/jira/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["credentials", "jira", "token"]
+            },
+            "description": "Elimina una credencial. Útil para limpiar entradas viejas con `key_name` incorrecto (ej. `api_token` antiguo).\n\n**Respuesta:** `204 No Content` o `404` si no existe."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📁 3. Projects",
+      "description": "Agrupador lógico de ejecuciones. Cada proyecto pertenece a un usuario (ownership chequeado en cada operación).",
+      "item": [
+        {
+          "name": "Create Project (guarda project_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('project_id', data.id);",
+                  "console.log('📁 project_id guardado:', data.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Notificaciones Marketing — EF\",\n  \"description\": \"Proyecto de pruebas para el servicio de notificaciones multicanal\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Crea un proyecto y guarda su `id` en la variable de colección `project_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/projects", "host": ["{{baseUrl}}"], "path": ["projects"] },
+            "description": "Lista todos los proyectos del usuario autenticado, ordenados por fecha de creación descendente."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{project_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{project_id}}"]
+            },
+            "description": "Detalle de un proyecto. `404` si no existe o pertenece a otro usuario."
+          },
+          "response": []
+        },
+        {
+          "name": "List Project Executions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{project_id}}/executions",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{project_id}}", "executions"]
+            },
+            "description": "Historial de ejecuciones de un proyecto. Devuelve `ExecutionSummary[]` con status (pending/extracting/generating/complete/partial/failed)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Project (RBAC)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{project_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{project_id}}"]
+            },
+            "description": "Elimina un proyecto y sus ejecuciones (cascade).\n\n**RBAC:**\n- `qa`: solo puede borrar proyectos propios\n- `admin`: puede borrar cualquier proyecto"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🎫 4. Jira HUs (Historias de Usuario)",
+      "description": "Listado, detalle y persistencia de HUs.\n\n- `POST /jira/tickets` consulta Jira y guarda en BD.\n- `GET /jira/tickets` lee desde BD (sin tocar Jira).\n- `POST /jira/tickets/{key}` detalle de una y la guarda.\n\nFiltros por defecto replican la columna **EN CURSO** del tablero.",
+      "item": [
+        {
+          "name": "POST — Lista HUs del proyecto y las guarda",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('contiene tickets', () => pm.expect(d.tickets).to.be.an('array'));",
+                  "if (d.tickets.length > 0) {",
+                  "  pm.collectionVariables.set('issue_key', d.tickets[0].key);",
+                  "  console.log('🎫 issue_key guardado:', d.tickets[0].key);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/jira/tickets", "host": ["{{baseUrl}}"], "path": ["jira", "tickets"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_key\": \"{{jira_project_key}}\",\n  \"status_categories\": [\"In Progress\"],\n  \"only_mine\": false,\n  \"only_open_sprints\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Consulta Jira (vía la API REST oficial vía `python-jira`) y **persiste cada HU** completa en la tabla `jira_tickets` (upsert por user_id + issue_key).\n\n**Body (todos opcionales):**\n| Campo | Default | Descripción |\n|-------|---------|-------------|\n| `project_key` | `null` | ej. `EF`, `FLY`. Si no se envía, busca en todos los proyectos accesibles. |\n| `status_categories` | `[\"In Progress\"]` | Categorías del tablero: `To Do`, `In Progress`, `Done`. **Estable** entre workflows. |\n| `statuses` | `null` | Opcional. Nombres EXACTOS de estado (cuidado: ambiguos entre workflows). |\n| `only_mine` | `false` | Si `true`, solo HUs asignadas a ti. Por defecto trae todas. |\n| `only_open_sprints` | `true` | Solo HUs en sprints activos. |\n\n**Respuesta (200):**\n```json\n{\n  \"tickets\": [\n    {\n      \"key\": \"EF-11\",\n      \"summary\": \"HU EF-11 Notificaciones API\",\n      \"status\": \"En curso\",\n      \"assignee\": \"daniel@quind.io\",\n      \"sprint\": \"EF Sprint 2\",\n      \"description\": \"Descripción completa con Scenarios y Criterios...\",\n      ...\n    }\n  ],\n  \"total\": 3,\n  \"filters\": { ... }\n}\n```\n\n**Errores:**\n- `424` — credenciales Jira no guardadas (usa `PUT /credentials` primero)\n- `502` — error de conectividad con Jira"
+          },
+          "response": []
+        },
+        {
+          "name": "POST — Variante: HUs asignadas SOLO a mí",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/jira/tickets", "host": ["{{baseUrl}}"], "path": ["jira", "tickets"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_key\": \"{{jira_project_key}}\",\n  \"only_mine\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Aplica `assignee = <tu email>` adicional al filtro. Útil cuando tienes muchas HUs y solo quieres las tuyas."
+          },
+          "response": []
+        },
+        {
+          "name": "POST — Variante: tablero completo (sin filtros)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/jira/tickets", "host": ["{{baseUrl}}"], "path": ["jira", "tickets"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_key\": \"{{jira_project_key}}\",\n  \"status_categories\": [\"To Do\", \"In Progress\", \"Done\"],\n  \"only_open_sprints\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Listado más amplio: todas las categorías y sin restricción de sprint activo. Ojo: puede ser pesado en proyectos grandes (cap 100)."
+          },
+          "response": []
+        },
+        {
+          "name": "GET — Catálogo de HUs guardadas (BD, sin Jira)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/jira/tickets", "host": ["{{baseUrl}}"], "path": ["jira", "tickets"] },
+            "description": "Lee las HUs **persistidas localmente**. NO llama a Jira. Ideal para el frontend (rápido, offline).\n\n**Respuesta:**\n```json\n{\n  \"tickets\": [\n    { \"id\": \"uuid\", \"issue_key\": \"EF-11\", \"description\": \"...\", \"sprint\": \"...\", \"fetched_at\": \"...\" }\n  ],\n  \"total\": 3\n}\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "GET — Catálogo filtrado por status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jira/tickets?status=En curso",
+              "host": ["{{baseUrl}}"],
+              "path": ["jira", "tickets"],
+              "query": [
+                { "key": "status", "value": "En curso", "description": "Filtra por nombre EXACTO del estado guardado en BD" }
+              ]
+            },
+            "description": "Filtro por estado exacto guardado en BD (no via JQL). Ejemplos: `En curso`, `En certificación`, `Listo`."
+          },
+          "response": []
+        },
+        {
+          "name": "POST — Detalle de HU por key (y la guarda)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/jira/tickets/{{issue_key}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["jira", "tickets", "{{issue_key}}"]
+            },
+            "description": "Obtiene la HU directamente por `key` (omite los filtros). Útil cuando ya conoces el ticket y solo quieres su info completa.\n\n**Respuesta:** Un objeto `JiraTicket` con descripción completa, sprint, assignee, reporter, story_points, fechas, labels, issue_type.\n\nTambién persiste/actualiza la fila en `jira_tickets`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "⚙️ 5. Pipeline de Generación",
+      "description": "Flujo orquestado para generar un proyecto Cypress BDD. **Sigue los pasos 1️⃣ → 8️⃣ en orden.**\n\nEstados de la ejecución:\n```\npending → extracting → generating → complete / partial / failed\n```",
+      "item": [
+        {
+          "name": "1️⃣ Create Execution (guarda execution_id)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('execution_id', data.execution_id);",
+                  "console.log('⚙️ execution_id guardado:', data.execution_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/executions", "host": ["{{baseUrl}}"], "path": ["executions"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project_id\": \"{{project_id}}\",\n  \"jira_ticket_id\": \"{{issue_key}}\",\n  \"ai_model\": \"gemini-pro-latest\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Crea una ejecución (estado `pending`) y un directorio aislado `/tmp/qa-sessions/{uuid}/`.\n\n**Campos:**\n- `project_id` — required\n- `jira_ticket_id` — opcional, puede llenarse después con `/fetch-jira`\n- `ai_model` — uno de: `gemini-pro-latest` (default), `gemini-1.5-pro`, `gemini-1.5-flash`"
+          },
+          "response": []
+        },
+        {
+          "name": "2️⃣ Upload Postman Collection",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "upload"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "collection",
+                  "type": "file",
+                  "src": [],
+                  "description": "Archivo `.json` de la colección Postman. Requerido."
+                },
+                {
+                  "key": "environment",
+                  "type": "file",
+                  "src": [],
+                  "description": "Archivo `.json` del entorno Postman (opcional). Las variables alimentan `cypress.env.json`."
+                }
+              ]
+            },
+            "description": "Sube colección Postman (+ entorno opcional).\n\n**Form-data:**\n- `collection` — file `.json` (≤ 10 MB)\n- `environment` — file `.json` (opcional)\n\n**Errores:**\n- `413` — colección > 10 MB\n- `422` — archivo no es `.json`"
+          },
+          "response": []
+        },
+        {
+          "name": "3️⃣ Extract Endpoints (guarda IDs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const eps = pm.response.json();",
+                  "pm.test('al menos 1 endpoint', () => pm.expect(eps).to.have.lengthOf.at.least(1));",
+                  "const ids = eps.map(e => e.id).join(',');",
+                  "pm.collectionVariables.set('endpoint_ids', ids);",
+                  "console.log('📡 endpoint_ids guardados:', ids);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/extract",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "extract"]
+            },
+            "description": "Parsea la colección Postman, extrae endpoints y crea el scaffold Cypress.\n\nDevuelve `EndpointOut[]` con los endpoints detectados (todos seleccionados por defecto).\n\nTransición de estado: `pending → extracting`."
+          },
+          "response": []
+        },
+        {
+          "name": "4️⃣ Fetch Jira Context (vincula HU + criterios IA)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/fetch-jira",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "fetch-jira"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issue_key\": \"{{issue_key}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "1. Trae la HU de Jira (descripción completa).\n2. La IA estructura los criterios de aceptación POR ENDPOINT.\n3. Persiste todo en `jira_tickets` y enlaza `execution.jira_issue_id`.\n\n**⚠️ Requiere `3️⃣ Extract` previo** — si no hay endpoints en BD devuelve `409`.\n\n**Respuesta (200):**\n```json\n{\n  \"issue_key\": \"EF-11\",\n  \"context_ready\": true,\n  \"endpoints_with_criteria\": 3,\n  \"business_summary\": \"...\"\n}\n```\n\n**Errores:**\n- `409` — no hay endpoints (ejecuta `/extract` primero)\n- `424` — credenciales Jira no configuradas\n- `502` — error consultando Jira"
+          },
+          "response": []
+        },
+        {
+          "name": "5️⃣ List Endpoints (revisa selección)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const eps = pm.response.json();",
+                  "console.table(eps.map(e => ({id: e.id, name: e.name, selected: e.selected, status: e.status})));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/endpoints",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "endpoints"]
+            },
+            "description": "Lista los endpoints registrados con su estado (`selected`, `pending/success/error`). Útil antes y después de generar."
+          },
+          "response": []
+        },
+        {
+          "name": "6️⃣ Update Endpoint Selection",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/endpoints",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "endpoints"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"selected_ids\": [{{endpoint_ids}}]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Reemplaza la selección actual. **Idempotente**: deselecciona todos y reselecciona los que estén en `selected_ids`.\n\n**Tip:** usa la variable `endpoint_ids` (CSV de IDs) que el paso 3 guarda automáticamente para seleccionar TODOS. O escribe `[22, 23]` para elegir manualmente."
+          },
+          "response": []
+        },
+        {
+          "name": "7️⃣ Generate (encola Celery task)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json();",
+                  "pm.test('status=queued', () => pm.expect(d.status).to.eql('queued'));",
+                  "console.log('🚀 Job encolado:', d.job_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "generate"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Encola la tarea Celery que genera `.feature` + `.ts` para cada endpoint seleccionado.\n\n**Body vacío.** Las credenciales Jira las lee el worker desde BD cifrada (NO viajan en argumentos Celery por seguridad).\n\n**Respuesta:**\n```json\n{ \"job_id\": \"...\", \"status\": \"queued\", \"execution_id\": \"...\" }\n```\n\n**Para ver el progreso en tiempo real:** abre el WebSocket de la carpeta 🔌."
+          },
+          "response": []
+        },
+        {
+          "name": "8️⃣ Get Execution (polling de estado)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}"]
+            },
+            "description": "Polling alternativo al WebSocket. Llama repetidamente (cada 2-3s) hasta `status` ∈ {`complete`, `partial`, `failed`}.\n\n**Respuesta:**\n```json\n{\n  \"id\": \"...\",\n  \"jira_ticket_id\": \"EF-11\",\n  \"status\": \"generating\",\n  \"endpoints_total\": 3,\n  \"endpoints_selected\": 3,\n  \"endpoints_generated\": 1,\n  \"created_at\": \"...\",\n  \"completed_at\": null\n}\n```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📄 6. Files & Download",
+      "description": "Lectura, edición manual y descarga del proyecto Cypress generado.",
+      "item": [
+        {
+          "name": "List Files (guarda file_name)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const files = pm.response.json();",
+                  "if (files.length > 0) {",
+                  "  const feature = files.find(f => f.file_name.endsWith('.feature')) || files[0];",
+                  "  pm.collectionVariables.set('file_name', feature.file_name);",
+                  "  console.log('📄 file_name guardado:', feature.file_name);",
+                  "}",
+                  "console.table(files.map(f => ({name: f.file_name, type: f.file_type, bytes: (f.file_content||'').length})));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/files",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "files"]
+            },
+            "description": "Lista archivos generados con su contenido completo. Vuelve `FileOut[]`. Guarda el primer `.feature` en la variable `file_name`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get File por nombre",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/files/{{file_name}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "files", "{{file_name}}"]
+            },
+            "description": "Devuelve un archivo específico (`.feature` o `.ts`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update File (edición manual RF-004)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/files/{{file_name}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "files", "{{file_name}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Feature: Mi feature editada manualmente\\n\\n  Scenario: Caso editado\\n    Given algo\\n    When pasa otra cosa\\n    Then validamos\\n\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Sobrescribe contenido en BD **y** en disco. Útil para corregir output del LLM antes del download."
+          },
+          "response": []
+        },
+        {
+          "name": "Download ZIP (proyecto Cypress completo)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/download",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "download"]
+            },
+            "description": "Descarga el proyecto Cypress como ZIP listo para `npm install && npm test`.\n\n**Estrategia:**\n1. Lee desde `/tmp/qa-sessions/{id}/cypress-project/` si existe.\n2. Si fue purgado por el TTL de 48h, reconstruye desde la tabla `generated_files`.\n\n**Tip Postman:** click derecho en la respuesta → **Save Response → Save to a file**."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🚨 7. Casos de Error (negative tests)",
+      "description": "Pruebas explícitas de las protecciones y validaciones del backend. Útil para verificar que los códigos de error sean los correctos.",
+      "item": [
+        {
+          "name": "401 — Login con password incorrecto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"contraseña-equivocada\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Esperado: **401 Unauthorized** con `{\"detail\":\"Credenciales inválidas\"}`."
+          },
+          "response": []
+        },
+        {
+          "name": "401 — Token inválido o vacío",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "este_no_es_un_jwt", "type": "string" }]
+            },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] },
+            "description": "Esperado: **401** con `{\"detail\":\"Token inválido o expirado\"}`."
+          },
+          "response": []
+        },
+        {
+          "name": "424 — Fetch Jira sin credenciales",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/jira/tickets", "host": ["{{baseUrl}}"], "path": ["jira", "tickets"] },
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "description": "Borra primero todas las credenciales `jira`. Esperado: **424 Failed Dependency** con mensaje guiando a `PUT /credentials`."
+          },
+          "response": []
+        },
+        {
+          "name": "409 — Fetch Jira sin extract previo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/fetch-jira",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "fetch-jira"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"issue_key\": \"{{issue_key}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Crea una nueva ejecución (paso 1️⃣) pero NO subas/extraigas endpoints. Esperado: **409 Conflict** con mensaje guiando a ejecutar `/extract` primero."
+          },
+          "response": []
+        },
+        {
+          "name": "400 — Generate sin endpoints seleccionados",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "generate"]
+            },
+            "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } },
+            "description": "Deselecciona todo con `PATCH /endpoints {\"selected_ids\":[]}`. Esperado: **400** con mensaje guiando a usar `PATCH /endpoints` primero."
+          },
+          "response": []
+        },
+        {
+          "name": "400 — Path traversal en update file",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/files/../../../etc/passwd",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "files", "..", "..", "..", "etc", "passwd"]
+            },
+            "body": { "mode": "raw", "raw": "{\"content\":\"x\"}", "options": { "raw": { "language": "json" } } },
+            "description": "Esperado: **400 Bad Request** (extensión no permitida) o **404** (archivo no existe). El sistema NUNCA permite escribir fuera del directorio Cypress."
+          },
+          "response": []
+        },
+        {
+          "name": "404 — Ejecución de otro usuario",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "00000000-0000-0000-0000-000000000000"]
+            },
+            "description": "Esperado: **404 Not Found**. El backend NO revela si la ejecución existe pero pertenece a otro usuario (siempre dice 'no encontrada')."
+          },
+          "response": []
+        },
+        {
+          "name": "404 — Credencial inexistente al borrar",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/credentials/inexistente/foo",
+              "host": ["{{baseUrl}}"],
+              "path": ["credentials", "inexistente", "foo"]
+            },
+            "description": "Esperado: **404 Not Found**."
+          },
+          "response": []
+        },
+        {
+          "name": "413 — Colección Postman > 10 MB",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/executions/{{execution_id}}/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["executions", "{{execution_id}}", "upload"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "collection", "type": "file", "src": [], "description": "Sube un .json > 10 MB para forzar el error" }
+              ]
+            },
+            "description": "Esperado: **413 Payload Too Large**. El backend rechaza por el header Content-Length antes de leer y por longitud real después."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔌 8. WebSocket — progreso en vivo",
+      "description": "**Cómo usar el WebSocket desde Postman:**\n\n1. En Postman, **File → New → WebSocket Request**.\n2. URL: `ws://localhost:8000/ws/executions/{{execution_id}}?token={{access_token}}`\n3. Click **Connect**.\n4. En otra pestaña ejecuta `7️⃣ Generate` y verás llegar eventos en vivo.\n\n**Eventos que llegan:**\n```json\n{ \"type\": \"started\",     \"total\": 3 }\n{ \"type\": \"file_ready\",  \"current\": 1, \"total\": 3, \"endpoint\": \"enviar notificacion Whatsapp\", \"files\": [\"...feature\", \"...ts\"] }\n{ \"type\": \"error\",       \"current\": 2, \"endpoint\": \"...\", \"message\": \"...\" }\n{ \"type\": \"complete\",    \"status\": \"complete\", \"total\": 3, \"generated\": 3 }\n{ \"type\": \"fatal_error\", \"message\": \"...\" }\n```\n\n**Heartbeat:**\nEl cliente puede enviar `\"ping\"` para mantener viva la conexión; el servidor responde `{\"type\":\"pong\"}`. Cada 25s el servidor envía un `ping` por su cuenta.\n\n**Errores de conexión:**\n- `4001` — token inválido/expirado\n- `4003` — la ejecución pertenece a otro usuario\n\n**Nota:** Esta carpeta no contiene un request ejecutable porque Postman maneja WebSockets como requests independientes, no dentro de la colección.",
+      "item": []
+    }
+  ]
+}
