@@ -1,11 +1,10 @@
 import logging
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
 from backend.models.database import get_db
-from backend.models.db import User, Project, Execution, Endpoint, ExecutionStatus
+from backend.models.db import User, Execution
+from backend.repositories import execution_repository as execution_repo
 from backend.schemas.executions import (
     ExecutionCreate,
     EndpointOut,
@@ -41,14 +40,12 @@ async def create_execution(
     """Creates an execution record tied to a project."""
     await _require_project_ownership(body.project_id, current_user.id, db)
 
-    execution = Execution(
+    execution = await execution_repo.create_execution(
+        db,
         project_id=body.project_id,
         jira_ticket_id=body.jira_ticket_id,
         ai_model=body.ai_model,
     )
-    db.add(execution)
-    await db.commit()
-    await db.refresh(execution)
 
     # Create isolated session directory (UUID-based → RNF-002)
     session_dir = get_session_dir(execution.id)
@@ -176,11 +173,7 @@ async def fetch_jira(
 
     # Load endpoint names from the DB (durable source of truth) so the AI anchors
     # acceptance criteria to the EXACT Postman names — even if /tmp/api.json was purged.
-    ep_rows = (
-        await db.execute(
-            select(Endpoint).where(Endpoint.execution_id == execution_id)
-        )
-    ).scalars().all()
+    ep_rows = await execution_repo.list_endpoints(db, execution_id)
 
     # Hard guard: without endpoints in the DB, the AI invents endpoint names from
     # the HU text and the criteria won't match anything during generation.
@@ -239,16 +232,13 @@ async def fetch_jira(
         jira_issue_id = None
 
     # Update execution with ticket info + link to the full HU record
-    await db.execute(
-        update(Execution)
-        .where(Execution.id == execution_id)
-        .values(
-            jira_ticket_id=body.issue_key,
-            jira_ticket_summary=context.get("contexto_negocio", ""),
-            jira_issue_id=jira_issue_id,
-        )
+    await execution_repo.set_jira_context(
+        db,
+        execution_id,
+        issue_key=body.issue_key,
+        summary=context.get("contexto_negocio", ""),
+        jira_issue_id=jira_issue_id,
     )
-    await db.commit()
 
     endpoint_count = len(context.get("endpoints", []))
     return FetchJiraResponse(
@@ -272,28 +262,7 @@ async def update_endpoint_selection(
     """Toggle which endpoints will be sent to AI generation."""
     await _require_execution_ownership(execution_id, current_user.id, db)
 
-    # Deselect all, then select chosen ones
-    await db.execute(
-        update(Endpoint)
-        .where(Endpoint.execution_id == execution_id)
-        .values(selected=False)
-    )
-    if body.selected_ids:
-        await db.execute(
-            update(Endpoint)
-            .where(
-                Endpoint.execution_id == execution_id,
-                Endpoint.id.in_(body.selected_ids),
-            )
-            .values(selected=True)
-        )
-
-    await db.execute(
-        update(Execution)
-        .where(Execution.id == execution_id)
-        .values(endpoints_selected=len(body.selected_ids))
-    )
-    await db.commit()
+    await execution_repo.apply_endpoint_selection(db, execution_id, body.selected_ids)
     return {"updated": len(body.selected_ids)}
 
 
@@ -310,13 +279,7 @@ async def generate_tests(
     """Enqueues a Celery task to generate BDD tests for all selected endpoints."""
     execution = await _require_execution_ownership(execution_id, current_user.id, db)
 
-    result = await db.execute(
-        select(Endpoint).where(
-            Endpoint.execution_id == execution_id,
-            Endpoint.selected.is_(True),
-        )
-    )
-    selected = result.scalars().all()
+    selected = await execution_repo.list_selected_endpoints(db, execution_id)
 
     if not selected:
         raise HTTPException(
@@ -371,10 +334,7 @@ async def list_endpoints(
     db: AsyncSession = Depends(get_db),
 ):
     await _require_execution_ownership(execution_id, current_user.id, db)
-    result = await db.execute(
-        select(Endpoint).where(Endpoint.execution_id == execution_id)
-    )
-    return result.scalars().all()
+    return await execution_repo.list_endpoints(db, execution_id)
 
 
 # ---------------------------------------------------------------------------
@@ -383,22 +343,14 @@ async def list_endpoints(
 async def _require_project_ownership(
     project_id: str, user_id: str, db: AsyncSession
 ) -> None:
-    result = await db.execute(
-        select(Project).where(Project.id == project_id, Project.user_id == user_id)
-    )
-    if not result.scalar_one_or_none():
+    if not await execution_repo.is_project_owned_by(db, project_id, user_id):
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
 
 async def _require_execution_ownership(
     execution_id: str, user_id: str, db: AsyncSession
 ) -> Execution:
-    result = await db.execute(
-        select(Execution)
-        .join(Project, Execution.project_id == Project.id)
-        .where(Execution.id == execution_id, Project.user_id == user_id)
-    )
-    execution = result.scalar_one_or_none()
+    execution = await execution_repo.get_execution_for_user(db, execution_id, user_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Ejecución no encontrada")
     return execution
