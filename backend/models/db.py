@@ -58,10 +58,10 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.qa, server_default="qa")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
 
-    projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    credentials: Mapped[list["Credential"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    credentials: Mapped[list["Credential"]] = relationship(back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
     integrations: Mapped[list["Integration"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -79,12 +79,12 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="projects")
-    executions: Mapped[list["Execution"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    executions: Mapped[list["Execution"]] = relationship(back_populates="project", cascade="all, delete-orphan", passive_deletes=True)
     integration_links: Mapped[list["ProjectIntegration"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", cascade="all, delete-orphan", passive_deletes=True
     )
     jira_issues: Mapped[list["JiraIssue"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project", cascade="all, delete-orphan", passive_deletes=True
     )
 
 
@@ -109,8 +109,8 @@ class Execution(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     project: Mapped["Project"] = relationship(back_populates="executions")
-    endpoints: Mapped[list["Endpoint"]] = relationship(back_populates="execution", cascade="all, delete-orphan")
-    generated_files: Mapped[list["GeneratedFile"]] = relationship(back_populates="execution", cascade="all, delete-orphan")
+    endpoints: Mapped[list["Endpoint"]] = relationship(back_populates="execution", cascade="all, delete-orphan", passive_deletes=True)
+    generated_files: Mapped[list["GeneratedFile"]] = relationship(back_populates="execution", cascade="all, delete-orphan", passive_deletes=True)
     jira_issue: Mapped["JiraIssue | None"] = relationship(back_populates="executions")
 
 
@@ -196,7 +196,11 @@ class JiraIssue(Base):
 
     user: Mapped["User"] = relationship()
     project: Mapped["Project | None"] = relationship(back_populates="jira_issues")
-    executions: Mapped[list["Execution"]] = relationship(back_populates="jira_issue")
+    # passive_deletes: al borrar la HU, la BD pone executions.jira_issue_id = NULL
+    # (ON DELETE SET NULL); no se cargan las ejecuciones para nulificarlas en Python.
+    executions: Mapped[list["Execution"]] = relationship(
+        back_populates="jira_issue", passive_deletes=True
+    )
 
     # Una HU por (proyecto, issue_key): la misma HU puede existir de forma
     # independiente en distintos proyectos.
@@ -246,10 +250,10 @@ class Integration(Base):
 
     user: Mapped["User"] = relationship(back_populates="integrations")
     secrets: Mapped[list["IntegrationSecret"]] = relationship(
-        back_populates="integration", cascade="all, delete-orphan"
+        back_populates="integration", cascade="all, delete-orphan", passive_deletes=True
     )
     project_links: Mapped[list["ProjectIntegration"]] = relationship(
-        back_populates="integration", cascade="all, delete-orphan"
+        back_populates="integration", cascade="all, delete-orphan", passive_deletes=True
     )
 
 

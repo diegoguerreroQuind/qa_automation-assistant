@@ -91,6 +91,38 @@ async def test_list_executions_unknown_project_404(client, auth_headers):
     assert resp.status_code == 404
 
 
+async def test_delete_project_cascades_to_children(client, auth_headers, project_id, db_engine):
+    """Borrar un proyecto debe eliminar en cascada ejecuciones y endpoints (passive_deletes + ON DELETE CASCADE)."""
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from backend.models.db import Endpoint, Execution
+
+    # Crear ejecución + endpoint hijo
+    exe = await client.post(
+        "/executions",
+        headers=auth_headers,
+        json={"project_id": project_id, "ai_model": "gemini-pro-latest"},
+    )
+    execution_id = exe.json()["execution_id"]
+
+    Session = async_sessionmaker(db_engine, expire_on_commit=False, class_=AsyncSession)
+    async with Session() as s:
+        s.add(Endpoint(execution_id=execution_id, name="ep", method="GET", url="http://x"))
+        await s.commit()
+
+    # Borrar el proyecto
+    resp = await client.delete(f"/projects/{project_id}", headers=auth_headers)
+    assert resp.status_code == 204
+
+    # Hijos eliminados en cascada
+    async with Session() as s:
+        execs = await s.scalar(select(func.count()).select_from(Execution))
+        eps = await s.scalar(select(func.count()).select_from(Endpoint))
+    assert execs == 0
+    assert eps == 0
+
+
 async def test_other_user_cannot_see_project(client, auth_headers, project_id):
     """El proyecto de un usuario no es visible ni accesible para otro."""
     from backend.tests.conftest import _register_and_login
