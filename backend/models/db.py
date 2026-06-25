@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
     String, Text, Boolean, Integer, Float, DateTime, ForeignKey,
-    Enum as SAEnum, UniqueConstraint,
+    Enum as SAEnum, UniqueConstraint, func, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import enum
@@ -55,8 +55,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str | None] = mapped_column(String(255))
-    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.qa)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.qa, server_default="qa")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
 
     projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     credentials: Mapped[list["Credential"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -69,14 +69,14 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     # Clave del proyecto Jira (ej. "EF") — se usa en el sync de HUs para filtrar
     # por proyecto en el JQL. Si es None, el sync buscará en todos los proyectos
     # a los que tenga acceso la credencial (comportamiento menos preciso).
     jira_project_key: Mapped[str | None] = mapped_column(String(50))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="projects")
     executions: Mapped[list["Execution"]] = relationship(back_populates="project", cascade="all, delete-orphan")
@@ -92,20 +92,20 @@ class Execution(Base):
     __tablename__ = "executions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     jira_ticket_id: Mapped[str | None] = mapped_column(String(50))
     jira_ticket_summary: Mapped[str | None] = mapped_column(Text)
     # Reference to the full Jira issue record (description, metadata, criteria).
     # Nullable: executions can run without a linked Jira HU.
     jira_issue_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("jira_tickets.id"), index=True
+        String(36), ForeignKey("jira_tickets.id", ondelete="SET NULL"), index=True
     )
-    ai_model: Mapped[str] = mapped_column(String(100), default="gemini-pro-latest")
-    status: Mapped[str] = mapped_column(String(20), default=ExecutionStatus.pending)
-    endpoints_total: Mapped[int] = mapped_column(Integer, default=0)
-    endpoints_selected: Mapped[int] = mapped_column(Integer, default=0)
-    endpoints_generated: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    ai_model: Mapped[str] = mapped_column(String(100), default="gemini-pro-latest", server_default="gemini-pro-latest")
+    status: Mapped[str] = mapped_column(String(20), default=ExecutionStatus.pending, server_default="pending")
+    endpoints_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    endpoints_selected: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    endpoints_generated: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     project: Mapped["Project"] = relationship(back_populates="executions")
@@ -118,13 +118,13 @@ class Endpoint(Base):
     __tablename__ = "endpoints"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    execution_id: Mapped[str] = mapped_column(String(36), ForeignKey("executions.id"), nullable=False, index=True)
+    execution_id: Mapped[str] = mapped_column(String(36), ForeignKey("executions.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)  # URL original de Postman (con {{placeholders}})
     folder: Mapped[str | None] = mapped_column(String(255))
-    selected: Mapped[bool] = mapped_column(Boolean, default=True)
-    status: Mapped[str] = mapped_column(String(20), default=EndpointStatus.pending)
+    selected: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    status: Mapped[str] = mapped_column(String(20), default=EndpointStatus.pending, server_default="pending")
     error_message: Mapped[str | None] = mapped_column(Text)
 
     # Detalle del request (para la vista expandible de la UI). Se persiste en la
@@ -141,12 +141,12 @@ class GeneratedFile(Base):
     __tablename__ = "generated_files"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    execution_id: Mapped[str] = mapped_column(String(36), ForeignKey("executions.id"), nullable=False, index=True)
+    execution_id: Mapped[str] = mapped_column(String(36), ForeignKey("executions.id", ondelete="CASCADE"), nullable=False, index=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(20))  # gherkin | typescript | config
     file_content: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(), onupdate=_utcnow
     )
 
     execution: Mapped["Execution"] = relationship(back_populates="generated_files")
@@ -164,10 +164,10 @@ class JiraIssue(Base):
     __tablename__ = "jira_tickets"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     # HU asociada a un proyecto (Proyecto → Credencial → Historias de Usuario).
     project_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("projects.id"), index=True
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
 
     # Core Jira fields
@@ -191,7 +191,7 @@ class JiraIssue(Base):
     structured_criteria: Mapped[str | None] = mapped_column(Text) # AI-structured criteria per endpoint
 
     fetched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(), onupdate=_utcnow
     )
 
     user: Mapped["User"] = relationship()
@@ -209,13 +209,13 @@ class Credential(Base):
     __tablename__ = "credentials"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(20), nullable=False)  # jira | azure | gemini | claude
     key_name: Mapped[str] = mapped_column(String(50), nullable=False)  # token | api_key | server_url
     encrypted_value: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(), onupdate=_utcnow
     )
 
     user: Mapped["User"] = relationship(back_populates="credentials")
@@ -234,14 +234,14 @@ class Integration(Base):
     __tablename__ = "integrations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(20), nullable=False)  # jira | azure
     # Nombre legible elegido por el usuario (identificador visible principal).
-    name: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="", server_default="")
     label: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(), onupdate=_utcnow
     )
 
     user: Mapped["User"] = relationship(back_populates="integrations")
@@ -258,7 +258,7 @@ class IntegrationSecret(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     integration_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("integrations.id"), nullable=False, index=True
+        String(36), ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     key_name: Mapped[str] = mapped_column(String(50), nullable=False)  # server | email | token …
     encrypted_value: Mapped[str] = mapped_column(Text, nullable=False)
@@ -275,12 +275,12 @@ class ProjectIntegration(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("projects.id"), nullable=False, index=True
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
     integration_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("integrations.id"), nullable=False, index=True
+        String(36), ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, server_default=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="integration_links")
     integration: Mapped["Integration"] = relationship(back_populates="project_links")

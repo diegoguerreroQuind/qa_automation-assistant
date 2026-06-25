@@ -7,6 +7,16 @@ Artefactos en este directorio:
 - [`schema.sql`](schema.sql) — DDL completo (tablas, índices, restricciones) +
   sello de Alembic. Validado contra PostgreSQL real.
 
+> **Mitigaciones de riesgo aplicadas al esquema** (migración `e5f6a7b8c9d0`):
+> 1. Se añadieron las 3 tablas que la cadena de migraciones histórica NO creaba
+>    (`integrations`, `integration_secrets`, `project_integrations`) — antes un
+>    `alembic upgrade head` limpio dejaba la BD incompleta.
+> 2. **DEFAULTs a nivel de BD** en `role`, `status`, contadores, `selected`,
+>    timestamps, etc. → inserciones manuales seguras.
+> 3. **`ON DELETE CASCADE`** (y `SET NULL` en `executions.jira_issue_id`) en las
+>    FKs, acorde a las cascadas del ORM → integridad de borrado en la BD.
+> Verificado: `schema.sql` y `alembic upgrade head` producen esquemas idénticos.
+
 ---
 
 ## 0. Decisión previa: ¿`alembic upgrade head` o `schema.sql`?
@@ -14,7 +24,7 @@ Artefactos en este directorio:
 | Camino | Cuándo usarlo |
 |---|---|
 | **`alembic upgrade head`** (recomendado) | Si puedes conectar la app/Alembic a Cloud SQL. Es el mecanismo canónico, idempotente, y registra `alembic_version`. **Las migraciones de este proyecto solo corren en modo *online*** (usan introspección en runtime); `--sql` offline NO funciona. |
-| **`schema.sql`** | Despliegue dirigido por DBA, sin ejecutar la app. Aplica el esquema y **sella** `alembic_version` en el head `d4e5f6a7b8c9`, de modo que migraciones futuras sigan funcionando. |
+| **`schema.sql`** | Despliegue dirigido por DBA, sin ejecutar la app. Aplica el esquema y **sella** `alembic_version` en el head `e5f6a7b8c9d0`, de modo que migraciones futuras sigan funcionando. |
 
 > No mezcles ambos sobre la misma BD. Si aplicas `schema.sql`, las migraciones
 > ya existentes quedan selladas como aplicadas.
@@ -116,7 +126,7 @@ El backend en runtime usa `qa_app`; Alembic usa `qa_migrator`.
 
 ```sql
 \dt                                  -- 10 tablas + alembic_version
-SELECT version_num FROM alembic_version;   -- d4e5f6a7b8c9
+SELECT version_num FROM alembic_version;   -- e5f6a7b8c9d0
 SELECT count(*) FROM pg_indexes WHERE schemaname='public';  -- 28
 ```
 
@@ -135,8 +145,9 @@ Recomendado (sin manipular hashes): registrar por la API y promover por SQL.
 UPDATE users SET role = 'admin' WHERE email = 'admin@quind.io';
 ```
 
-Alternativa por SQL directo (requiere generar el hash bcrypt con la app, porque
-no hay defaults de BD: hay que dar id, role y created_at explícitos):
+Alternativa por SQL directo (requiere generar el hash bcrypt con la app). La BD
+ya aplica defaults para `role` y `created_at`; basta con dar `id` + columnas de
+negocio:
 
 ```bash
 # Genera el hash bcrypt con el mismo algoritmo del backend
@@ -144,9 +155,10 @@ python3 -c "import bcrypt; print(bcrypt.hashpw(b'TU_PASSWORD', bcrypt.gensalt())
 ```
 
 ```sql
-INSERT INTO users (id, email, name, hashed_password, role, created_at)
+-- role se pasa explícito ('admin') porque el default es 'qa'; created_at usa now() por defecto
+INSERT INTO users (id, email, name, hashed_password, role)
 VALUES (gen_random_uuid()::text, 'admin@quind.io', 'Admin',
-        '<HASH_BCRYPT_GENERADO>', 'admin', now());
+        '<HASH_BCRYPT_GENERADO>', 'admin');
 ```
 
 > `gen_random_uuid()` está disponible en PostgreSQL 13+ sin extensiones.
